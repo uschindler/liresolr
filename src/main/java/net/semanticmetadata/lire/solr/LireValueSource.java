@@ -102,8 +102,8 @@ public class LireValueSource extends ValueSource {
     }
     
     private static String normalizeFieldName(String field) {
-      if (!field.endsWith("_hi")) { // TODO: Make that somewhat not so string dependent .. maybe connect with the postfix in FeatureRegistry
-        field += "_hi";
+      if (!field.endsWith(FeatureRegistry.featureFieldPostfix)) {
+        field += FeatureRegistry.featureFieldPostfix;
       }
       return field;
     }
