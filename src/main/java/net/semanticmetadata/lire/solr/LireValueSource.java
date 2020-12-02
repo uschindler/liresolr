@@ -57,7 +57,6 @@ import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
 import org.apache.lucene.util.BytesRef;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
-import net.semanticmetadata.lire.imageanalysis.features.global.ColorLayout;
 
 /**
  * A query function for sorting results based on the LIRE CBIR functions.
