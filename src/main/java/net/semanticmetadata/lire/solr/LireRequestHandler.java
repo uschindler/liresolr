@@ -43,20 +43,20 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.PrimitiveIterator;
+import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
+import java.util.stream.StreamSupport;
 
 import javax.imageio.ImageIO;
 
-import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalShortFeature;
-import net.semanticmetadata.lire.solr.features.ShortFeatureCosineDistance;
-import net.semanticmetadata.lire.solr.tools.EncodeAndHashCSV;
-import net.semanticmetadata.lire.solr.tools.Utilities;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.document.Document;
@@ -92,7 +92,9 @@ import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.ColorLayout;
 import net.semanticmetadata.lire.indexers.hashing.BitSampling;
 import net.semanticmetadata.lire.indexers.hashing.MetricSpaces;
-import net.semanticmetadata.lire.solr.tools.RandomAccessBinaryDocValues;
+import net.semanticmetadata.lire.solr.features.ShortFeatureCosineDistance;
+import net.semanticmetadata.lire.solr.tools.EncodeAndHashCSV;
+import net.semanticmetadata.lire.solr.tools.Utilities;
 import net.semanticmetadata.lire.utils.ImageUtils;
 import net.semanticmetadata.lire.utils.StatsUtils;
 
@@ -100,7 +102,7 @@ import net.semanticmetadata.lire.utils.StatsUtils;
  * This is the main LIRE RequestHandler for the Solr Plugin. It supports query by example using the indexed id,
  * an url or a feature vector. Furthermore, feature extraction and random selection of images are supported.
  *
- * @author Mathias Lux, mathias@juggle.at, 07.07.13
+ * @author Mathias Lux, mathias@juggle.at, 07.07.13, Uwe Schindler (Solr 7/8 fixes)
  */
 
 public class LireRequestHandler extends RequestHandlerBase {
@@ -133,6 +135,7 @@ public class LireRequestHandler extends RequestHandlerBase {
     }
 
 
+    @SuppressWarnings("rawtypes")
     @Override
     public void init(NamedList args) {
         super.init(args);
@@ -196,15 +199,7 @@ public class LireRequestHandler extends RequestHandlerBase {
             rsp.add("QueryFeature", queryFeature.getClass().getName());
             if (queryDocId > -1) {
                 // Using DocValues to get the actual data from the index.
-//              BinaryDocValues binaryValues = MultiDocValues.getBinaryValues(searcher.getIndexReader(), FeatureRegistry.getFeatureFieldName(paramField));
-                BinaryDocValues binaryValues = new RandomAccessBinaryDocValues(() -> {
-                    try {
-                        return MultiDocValues.getBinaryValues(searcher.getIndexReader(), FeatureRegistry.getFeatureFieldName(paramField));
-                    } catch (IOException e) {
-                        throw new RuntimeException("BinaryDocValues problem.", e);
-                    }
-
-                });
+                final BinaryDocValues binaryValues = MultiDocValues.getBinaryValues(searcher.getIndexReader(), FeatureRegistry.getFeatureFieldName(paramField));
                 if (binaryValues == null) {
                     rsp.add("Error", "Could not find the DocValues of the query document. Are they in the index? Id: " + req.getParams().get("id"));
                     // System.err.println("Could not find the DocValues of the query document. Are they in the index?");
@@ -293,7 +288,7 @@ public class LireRequestHandler extends RequestHandlerBase {
         if (docList.size() < 1) {
             rsp.add("Error", "No documents in index");
         } else {
-            LinkedList list = new LinkedList();
+            LinkedList<Document> list = new LinkedList<>();
             while (list.size() < paramRows) {
                 DocList auxList = docList.subset((int) (Math.random() * docList.size()), 1);
                 Document doc = null;
@@ -527,6 +522,7 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @throws IllegalAccessException
      * @throws InstantiationException
      */
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private void doSearch(SolrQueryRequest req, SolrQueryResponse rsp, SolrIndexSearcher searcher, String hashFieldName,
                           int maximumHits, List<Query> filterQueries, Query query, GlobalFeature queryFeature)
             throws IOException, IllegalAccessException, InstantiationException {
@@ -536,29 +532,24 @@ public class LireRequestHandler extends RequestHandlerBase {
         time = System.currentTimeMillis();
 
         String featureFieldName = FeatureRegistry.getFeatureFieldName(hashFieldName);
-//        BinaryDocValues binaryValues = MultiDocValues.getBinaryValues(searcher.getIndexReader(), featureFieldName);
-        BinaryDocValues binaryValues = new RandomAccessBinaryDocValues(() -> {
-            try {
-                return MultiDocValues.getBinaryValues(searcher.getIndexReader(), featureFieldName);
-            } catch (IOException e) {
-                throw new RuntimeException("BinaryDocValues problem.", e);
-            }
-        });
+        final BinaryDocValues binaryValues = MultiDocValues.getBinaryValues(searcher.getIndexReader(), featureFieldName);
 
         time = System.currentTimeMillis() - time;
         rsp.add("DocValuesOpenTime", time + "");
 
-        Iterator<Integer> docIterator;
+        final PrimitiveIterator.OfInt docIterator;
         long numberOfResults = 0;
         time = System.currentTimeMillis();
         if (filterQueries != null) {
             DocList docList = searcher.getDocList(query, filterQueries, Sort.RELEVANCE, 0, numberOfCandidateResults, 0);
             numberOfResults = docList.size();
-            docIterator = docList.iterator();
+            // hack to get a sorted iterator
+            docIterator = StreamSupport.stream(Spliterators.spliteratorUnknownSize(docList.iterator(), Spliterator.ORDERED), false)
+                .mapToInt(Integer::intValue).sorted().iterator();
         } else {
             TopDocs docs = searcher.search(query, numberOfCandidateResults);
             numberOfResults = docs.totalHits;
-            docIterator = new TopDocsIterator(docs);
+            docIterator = Arrays.stream(docs.scoreDocs).mapToInt(i -> i.doc).sorted().iterator();
         }
         time = System.currentTimeMillis() - time;
         rsp.add("RawDocsCount", numberOfResults + "");
@@ -629,7 +620,7 @@ public class LireRequestHandler extends RequestHandlerBase {
     }
 
     private TreeSet<CachingSimpleResult> getReRankedResults(
-            Iterator<Integer> docIterator, BinaryDocValues binaryValues,
+            PrimitiveIterator.OfInt docIterator, BinaryDocValues binaryValues,
             GlobalFeature queryFeature, GlobalFeature tmpFeature,
             int maximumHits, IndexSearcher searcher) throws IOException {
 
@@ -640,14 +631,10 @@ public class LireRequestHandler extends RequestHandlerBase {
         CachingSimpleResult tmpResult;
         while (docIterator.hasNext()) {
             // using DocValues to retrieve the field values ...
-            int doc = docIterator.next();
+            int doc = docIterator.nextInt();
 
-//            bytesRef = binaryValues.get(doc);
             bytesRef = getBytesRef(binaryValues, doc);
             tmpFeature.setByteArrayRepresentation(bytesRef.bytes, bytesRef.offset, bytesRef.length);
-            // Getting the document from the index.
-            // This is the slow step based on the field compression of stored fields.
-//            tmpFeature.setByteArrayRepresentation(d.getBinaryValue(name).bytes, d.getBinaryValue(name).offset, d.getBinaryValue(name).length);
             tmpScore = queryFeature.getDistance(tmpFeature);
             if (resultScoreDocs.size() < maximumHits) {
                 resultScoreDocs.add(new CachingSimpleResult(tmpScore, searcher.doc(doc), doc));
@@ -671,19 +658,6 @@ public class LireRequestHandler extends RequestHandlerBase {
     public String getDescription() {
         return "LIRE Request Handler to add images to an index and search them. Search images by id, by url and by extracted features.";
     }
-
-//    @Override
-//    public String getSource() {
-//        return "http://lire-project.net";
-//    }
-//
-//    @Override
-//    public NamedList<Object> getStatistics() {
-//        // Change stats here to get an insight in the admin console.
-//        NamedList<Object> statistics = super.getStatistics();
-//        statistics.add("Number of Requests", countRequests);
-//        return statistics;
-//    }
 
     /**
      * Makes a Boolean query out of a list of hashes by ordering them ascending using their docFreq and
@@ -773,11 +747,9 @@ public class LireRequestHandler extends RequestHandlerBase {
         return termFilter;
     }
 
-    private BytesRef getBytesRef(BinaryDocValues bdv, int docId)
+    private static BytesRef getBytesRef(BinaryDocValues bdv, int docId)
             throws IOException {
-        if (bdv != null && bdv.advance(docId) == docId) {
-//        if (bdv != null && bdv.docID() < docId && bdv.advance(docId) == docId) {
-//        if (bdv != null && bdv.advanceExact(docId)) {
+        if (bdv != null && bdv.advanceExact(docId)) {
             return bdv.binaryValue();
         }
         return new BytesRef(BytesRef.EMPTY_BYTES);
