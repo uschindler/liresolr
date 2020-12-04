@@ -1,14 +1,9 @@
 package net.semanticmetadata.lire.solr.features;
 
 import net.semanticmetadata.lire.imageanalysis.features.LireFeature;
-import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalDoubleFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalShortFeature;
 import net.semanticmetadata.lire.utils.MetricsUtils;
 import net.semanticmetadata.lire.utils.SerializationUtils;
-import org.apache.lucene.util.BytesRef;
-
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 

@@ -9,7 +9,6 @@ import net.semanticmetadata.lire.solr.HashingMetricSpacesManager;
 import net.semanticmetadata.lire.solr.indexing.ParallelSolrIndexer;
 import net.semanticmetadata.lire.utils.CommandLineUtils;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.ThresholdingOutputStream;
 
 import java.io.*;
@@ -21,7 +20,6 @@ import java.util.concurrent.LinkedBlockingQueue;
  * an XML file for being sent to Solr while optionally adding hashes.
  */
 public class IndexingFromTextFile extends AbstractDocumentWriter {
-    private static final boolean useXML = true;
     private static String helpMessage = "HELP\n" +
             "====\n" +
             "\n" +

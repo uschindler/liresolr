@@ -33,7 +33,6 @@ public class FlickrPhotoGrabber extends DefaultHandler {
     private LinkedList<String> currentTags = new LinkedList<String>();
 
     public static List<FlickrPhoto> getRecentPhotos() throws IOException, SAXException, ParserConfigurationException {
-        LinkedList<FlickrPhoto> photos = new LinkedList<FlickrPhoto>();
         URL u = new URL(BASE_URL);
         FlickrPhotoGrabber handler = new FlickrPhotoGrabber();
         SAXParser saxParser = SAXParserFactory.newInstance().newSAXParser();
@@ -42,7 +41,6 @@ public class FlickrPhotoGrabber extends DefaultHandler {
     }
 
     public static List<FlickrPhoto> getPhotosWithTags(String tags) throws IOException, SAXException, ParserConfigurationException {
-        LinkedList<FlickrPhoto> photos = new LinkedList<FlickrPhoto>();
         URL u = new URL(BASE_URL + "&tags=" + tags);
         FlickrPhotoGrabber handler = new FlickrPhotoGrabber();
         SAXParser saxParser = SAXParserFactory.newInstance().newSAXParser();
@@ -51,7 +49,6 @@ public class FlickrPhotoGrabber extends DefaultHandler {
     }
 
     public static List<FlickrPhoto> getPhotosFromUser(String userID) throws IOException, SAXException, ParserConfigurationException {
-        LinkedList<FlickrPhoto> photos = new LinkedList<FlickrPhoto>();
         URL u = new URL(BASE_URL + "&id=" + userID);
         FlickrPhotoGrabber handler = new FlickrPhotoGrabber();
         SAXParser saxParser = SAXParserFactory.newInstance().newSAXParser();

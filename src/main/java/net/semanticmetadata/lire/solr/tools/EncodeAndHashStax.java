@@ -3,8 +3,6 @@ package net.semanticmetadata.lire.solr.tools;
 import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalShortFeature;
 import net.semanticmetadata.lire.indexers.hashing.BitSampling;
 import net.semanticmetadata.lire.solr.HashingMetricSpacesManager;
-import org.apache.solr.common.util.XML;
-
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;

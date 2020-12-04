@@ -27,7 +27,6 @@ public class GetSingleDocumentFromXML implements Runnable{
     }
 
     public static void main(String[] args) throws ParseException, FileNotFoundException, DocumentException {
-        File fileIn = null;
         Options options = new Options();
         options.addOption("i", "input-file", true, "XML File to open.");
         options.addOption("d", "document-id", true, "The document to search for.");

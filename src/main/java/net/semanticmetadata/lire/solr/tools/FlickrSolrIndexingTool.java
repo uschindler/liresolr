@@ -1,6 +1,5 @@
 package net.semanticmetadata.lire.solr.tools;
 
-import net.semanticmetadata.lire.indexers.hashing.BitSampling;
 import net.semanticmetadata.lire.solr.HashingMetricSpacesManager;
 import net.semanticmetadata.lire.utils.CommandLineUtils;
 import org.xml.sax.SAXException;

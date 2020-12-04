@@ -5,7 +5,6 @@ import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalDoub
 import net.semanticmetadata.lire.utils.MetricsUtils;
 import net.semanticmetadata.lire.utils.SerializationUtils;
 
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 
