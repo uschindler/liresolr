@@ -1,7 +1,6 @@
 package net.semanticmetadata.lire.solr;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
-import net.semanticmetadata.lire.imageanalysis.features.LireFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.*;
 import net.semanticmetadata.lire.indexers.hashing.BitSampling;
 import net.semanticmetadata.lire.solr.indexing.ParallelSolrIndexer;
@@ -30,20 +29,10 @@ import static org.apache.solr.handler.dataimport.XPathEntityProcessor.URL;
  */
 public class LireEntityProcessor extends EntityProcessorBase {
     protected boolean done = false;
-    protected LireFeature[] listOfFeatures = new LireFeature[]{
+    protected GlobalFeature[] listOfFeatures = new GlobalFeature[]{
             new ColorLayout(), new PHOG(), new EdgeHistogram(), new JCD(), new OpponentHistogram()
     };
-    protected static HashMap<Class, String> classToPrefix = new HashMap<Class, String>(5);
     int count = 0;
-
-    static {
-        classToPrefix.put(ColorLayout.class, "cl");
-        classToPrefix.put(EdgeHistogram.class, "eh");
-        classToPrefix.put(PHOG.class, "ph");
-        classToPrefix.put(OpponentHistogram.class, "oh");
-        classToPrefix.put(JCD.class, "jc");
-    }
-
 
     protected void firstInit(Context context) {
         super.firstInit(context);
@@ -60,7 +49,7 @@ public class LireEntityProcessor extends EntityProcessorBase {
             return null;
         }
         Map<String, Object> row = new HashMap<String, Object>();
-        DataSource<InputStream> dataSource = context.getDataSource();
+        @SuppressWarnings("unchecked") DataSource<InputStream> dataSource = context.getDataSource();
         // System.out.println("\n**** " + context.getResolvedEntityAttribute(URL));
         InputStream is = dataSource.getData(context.getResolvedEntityAttribute(URL));
         row.put("id", context.getResolvedEntityAttribute(URL));
@@ -70,10 +59,11 @@ public class LireEntityProcessor extends EntityProcessorBase {
             BufferedImage img = ImageIO.read(is);
             row.put("id", context.getResolvedEntityAttribute(URL));
             for (int i = 0; i < listOfFeatures.length; i++) {
-                LireFeature feature = listOfFeatures[i];
-                ((GlobalFeature) feature).extract(img);
-                String histogramField = classToPrefix.get(feature.getClass()) + "_hi";
-                String hashesField = classToPrefix.get(feature.getClass()) + "_ha";
+                GlobalFeature feature = listOfFeatures[i];
+                feature.extract(img);
+                String code = FeatureRegistry.getCodeForClass(feature.getClass());
+                String histogramField = code.concat(FeatureRegistry.featureFieldPostfix);
+                String hashesField = code.concat(FeatureRegistry.hashFieldPostfix);
                 row.put(histogramField, Base64.encodeBase64String(feature.getByteArrayRepresentation()));
                 row.put(hashesField, ParallelSolrIndexer.arrayToString(BitSampling.generateHashes(((GlobalFeature) feature).getFeatureVector())));
             }

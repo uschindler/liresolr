@@ -53,6 +53,7 @@ import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.StringTokenizer;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 import java.util.stream.StreamSupport;
 
 import javax.imageio.ImageIO;
@@ -175,10 +176,8 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
-     * @throws InstantiationException
-     * @throws IllegalAccessException
      */
-    private void handleIdSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, InstantiationException, IllegalAccessException {
+    private void handleIdSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
         SolrIndexSearcher searcher = req.getSearcher();
         try {
 //            TopDocs hits = searcher.search(new TermQuery(new Term("id", req.getParams().get("id"))), 1);
@@ -194,7 +193,7 @@ public class LireRequestHandler extends RequestHandlerBase {
             useMetricSpaces = req.getParams().getBool("ms", DEFAULT_USE_METRIC_SPACES);
             int paramRows = req.getParams().getInt("rows", defaultNumberOfResults);
 
-            GlobalFeature queryFeature = (GlobalFeature) FeatureRegistry.getClassForHashField(paramField).newInstance();
+            GlobalFeature queryFeature = FeatureRegistry.getFeatureSupplierForHashField(paramField).get();
             rsp.add("QueryField", paramField);
             rsp.add("QueryFeature", queryFeature.getClass().getName());
             if (queryDocId > -1) {
@@ -310,10 +309,8 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
-     * @throws InstantiationException
-     * @throws IllegalAccessException
      */
-    private void handleUrlSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, InstantiationException, IllegalAccessException {
+    private void handleUrlSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
         SolrParams params = req.getParams();
         String paramUrl = params.get("url");
         String paramField = req.getParams().get("field", "cl_ha");
@@ -326,7 +323,7 @@ public class LireRequestHandler extends RequestHandlerBase {
         useMetricSpaces = req.getParams().getBool("ms", DEFAULT_USE_METRIC_SPACES);
 
 
-        GlobalFeature feat = null;
+        final GlobalFeature feat = FeatureRegistry.getFeatureSupplierForHashField(paramField).get();
         int[] hashes = null;
         Query query = null;
         // wrapping the whole part in the try
@@ -334,11 +331,6 @@ public class LireRequestHandler extends RequestHandlerBase {
             BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
             img = ImageUtils.trimWhiteSpace(img);
             // getting the right feature per field:
-            if (FeatureRegistry.getClassForHashField(paramField) == null) {
-                feat = new ColorLayout();
-            } else {
-                feat = (GlobalFeature) FeatureRegistry.getClassForHashField(paramField).newInstance();
-            }
             feat.extract(img);
 
             if (!useMetricSpaces) {
@@ -362,7 +354,7 @@ public class LireRequestHandler extends RequestHandlerBase {
             e.printStackTrace();
         }
         // search if the feature has been extracted and query is there.
-        if (feat != null && query != null) {
+        if (query != null) {
             doSearch(req, rsp, req.getSearcher(), paramField, paramRows, getFilterQueries(req), query, feat);
         }
     }
@@ -373,10 +365,8 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
-     * @throws InstantiationException
-     * @throws IllegalAccessException
      */
-    private void handleExtract(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, InstantiationException, IllegalAccessException {
+    private void handleExtract(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
         SolrParams params = req.getParams();
         String paramUrl = params.get("extract");
         String paramField = req.getParams().get("field", "cl_ha");
@@ -392,10 +382,11 @@ public class LireRequestHandler extends RequestHandlerBase {
                 BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
                 img = ImageUtils.trimWhiteSpace(img);
                 // getting the right feature per field:
-                if (FeatureRegistry.getClassForHashField(paramField) == null) {
+                final Supplier<GlobalFeature> suppl = FeatureRegistry.getFeatureSupplierForHashField(paramField);
+                if (suppl == null) {
                     feat = new ColorLayout();
                 } else {
-                    feat = (GlobalFeature) FeatureRegistry.getClassForHashField(paramField).newInstance();
+                    feat = suppl.get();
                 }
                 feat.extract(img);
             } else {
@@ -439,10 +430,8 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
-     * @throws IllegalAccessException
-     * @throws InstantiationException
      */
-    private void handleHashSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, IllegalAccessException, InstantiationException {
+    private void handleHashSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
         SolrParams params = req.getParams();
         SolrIndexSearcher searcher = req.getSearcher();
         // get the params needed:
@@ -465,8 +454,7 @@ public class LireRequestHandler extends RequestHandlerBase {
         useMetricSpaces = req.getParams().getBool("ms", DEFAULT_USE_METRIC_SPACES);
 
         // query feature
-        GlobalFeature queryFeature = (GlobalFeature)
-                FeatureRegistry.getClassForHashField(paramField).newInstance();
+        GlobalFeature queryFeature = FeatureRegistry.getFeatureSupplierForHashField(paramField).get();
         queryFeature.setByteArrayRepresentation(featureVector);
 
         if (!useMetricSpaces) {
@@ -519,15 +507,13 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param query         the (Boolean) query for querying the candidates from the IndexSearcher
      * @param queryFeature  the image feature used for re-ranking the results
      * @throws IOException
-     * @throws IllegalAccessException
-     * @throws InstantiationException
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void doSearch(SolrQueryRequest req, SolrQueryResponse rsp, SolrIndexSearcher searcher, String hashFieldName,
                           int maximumHits, List<Query> filterQueries, Query query, GlobalFeature queryFeature)
-            throws IOException, IllegalAccessException, InstantiationException {
+            throws IOException {
         // temp feature instance
-        GlobalFeature tmpFeature = queryFeature.getClass().newInstance();
+        GlobalFeature tmpFeature = FeatureRegistry.getFeatureSupplierForHashField(hashFieldName).get();
         // Taking the time of search for statistical purposes.
         time = System.currentTimeMillis();
 
@@ -711,40 +697,6 @@ public class LireRequestHandler extends RequestHandlerBase {
             hList.remove(0);
         }
         return hList;
-    }
-
-    /**
-     * This is used to create a TermsFilter ... should be used to select in the index based on many terms.
-     * We just need to integrate a minimum query too, else we'd not get the appropriate results.
-     * TODO: This is wrong.
-     *
-     * @param hashes
-     * @param paramField
-     * @return
-     */
-    private List<Term> createTermFilter(int[] hashes, String paramField, double size) {
-        List<String> hList = new ArrayList<>(hashes.length);
-        // creates a list of terms.
-        for (int hashe : hashes) {
-            hList.add(Integer.toHexString(hashe));
-        }
-        // uses our predetermined hash term stats object to sort the list
-        Collections.sort(hList, (o1, o2) -> HashTermStatistics.docFreq(paramField, o1) - HashTermStatistics.docFreq(paramField, o2));
-        // removing those with zero entries but leaving at least three.
-        while (HashTermStatistics.docFreq(paramField, hList.get(0)) < 1 && hList.size() > 3) {
-            hList.remove(0);
-        }
-        int numHashes = (int) Math.min(hList.size(), Math.floor(hashes.length * size));
-        // a minimum of 3 hashes ...
-        if (numHashes < 3) {
-            numHashes = 3;
-        }
-        LinkedList<Term> termFilter = new LinkedList<Term>();
-        for (int i = 0; i < numHashes; i++) {
-            // be aware that the hashFunctionsFileName of the field must match the one you put the hashes in before.
-            termFilter.add(new Term(paramField, Integer.toHexString(hashes[i])));
-        }
-        return termFilter;
     }
 
     private static BytesRef getBytesRef(BinaryDocValues bdv, int docId)

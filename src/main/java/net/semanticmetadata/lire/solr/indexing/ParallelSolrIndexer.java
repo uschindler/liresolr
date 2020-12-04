@@ -101,22 +101,22 @@ public class ParallelSolrIndexer implements Runnable {
     boolean ended = false;
     int overallCount = 0;
     OutputStream dos = null;
-    Set<Class> listOfFeatures;
+    Set<String> featureCodes;
 
     File fileList = null;
     File outFile = null;
     private int monitoringInterval = 10;
     private int maxSideLength = 512;
     private boolean isPreprocessing = true;
-    private Class imageDataProcessor = null;
+    private Class<? extends ImageDataProcessor> imageDataProcessor = null;
 
     public ParallelSolrIndexer() {
         // default constructor.
-        listOfFeatures = new HashSet<Class>();
-        listOfFeatures.add(PHOG.class);
-        listOfFeatures.add(ColorLayout.class);
-        listOfFeatures.add(EdgeHistogram.class);
-        listOfFeatures.add(JCD.class);
+        featureCodes = new HashSet<>();
+        featureCodes.add(FeatureRegistry.getCodeForClass(PHOG.class));
+        featureCodes.add(FeatureRegistry.getCodeForClass(ColorLayout.class));
+        featureCodes.add(FeatureRegistry.getCodeForClass(EdgeHistogram.class));
+        featureCodes.add(FeatureRegistry.getCodeForClass(JCD.class));
 
         HashingMetricSpacesManager.init(); // load reference points from disk.
 
@@ -167,9 +167,8 @@ public class ParallelSolrIndexer implements Runnable {
                 // image data processor class.
                 if ((i + 1) < args.length) {
                     try {
-                        Class<?> imageDataProcessorClass = Class.forName(args[i + 1]);
-                        if (imageDataProcessorClass.newInstance() instanceof ImageDataProcessor)
-                            e.setImageDataProcessor(imageDataProcessorClass);
+                        Class<? extends ImageDataProcessor> imageDataProcessorClass = Class.forName(args[i + 1]).asSubclass(ImageDataProcessor.class);
+                        e.setImageDataProcessor(imageDataProcessorClass);
                     } catch (Exception e1) {
                         System.err.println("Did not find imageProcessor class: " + e1.getMessage());
                         printHelp();
@@ -184,8 +183,10 @@ public class ParallelSolrIndexer implements Runnable {
                     String[] ft = args[i + 1].split(",");
                     for (int j = 0; j < ft.length; j++) {
                         String s = ft[j].trim();
-                        if (FeatureRegistry.getClassForCode(s) != null) {
-                            e.addFeature(FeatureRegistry.getClassForCode(s));
+                        if (FeatureRegistry.getFeatureSupplierForCode(s) != null) {
+                            e.addFeature(s);
+                        } else {
+                            throw new IllegalArgumentException("Invalid feature code: " + s);
                         }
                     }
                 }
@@ -253,8 +254,8 @@ public class ParallelSolrIndexer implements Runnable {
      *
      * @param feature
      */
-    public void addFeature(Class feature) {
-        listOfFeatures.add(feature);
+    public void addFeature(String code) {
+        featureCodes.add(code);
     }
 
     /**
@@ -275,7 +276,7 @@ public class ParallelSolrIndexer implements Runnable {
         this.outFile = outFile;
     }
 
-    public void setImageDataProcessor(Class imageDataProcessor) {
+    public void setImageDataProcessor(Class<? extends ImageDataProcessor> imageDataProcessor) {
         this.imageDataProcessor = imageDataProcessor;
     }
 
@@ -317,8 +318,8 @@ public class ParallelSolrIndexer implements Runnable {
             return;
         }
         System.out.println("Extracting features: ");
-        for (Iterator<Class> iterator = listOfFeatures.iterator(); iterator.hasNext(); ) {
-            System.out.println("\t" + iterator.next().getCanonicalName());
+        for (String code : featureCodes) {
+            System.out.println("\t" + code);
         }
         try {
             if (!individualFiles) {
@@ -358,16 +359,9 @@ public class ParallelSolrIndexer implements Runnable {
 
     }
 
-    private void addFeatures(List features) {
-        for (Iterator<Class> iterator = listOfFeatures.iterator(); iterator.hasNext(); ) {
-            Class next = iterator.next();
-            try {
-                features.add(next.newInstance());
-            } catch (InstantiationException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            }
+    private void addFeatures(List<GlobalFeature> features) {
+        for (String code : featureCodes) {
+            features.add(FeatureRegistry.getFeatureSupplierForCode(code).get());
         }
     }
 
@@ -521,7 +515,7 @@ public class ParallelSolrIndexer implements Runnable {
                         ImageDataProcessor idp = null;
                         try {
                             if (imageDataProcessor != null) {
-                                idp = (ImageDataProcessor) imageDataProcessor.newInstance();
+                                idp = imageDataProcessor.newInstance();
                             }
                         } catch (Exception e) {
                             System.err.println("Could not instantiate ImageDataProcessor!");

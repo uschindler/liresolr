@@ -83,17 +83,10 @@ public class LireValueSource extends ValueSource {
         this.maxDistance = maxDistance;
 
         // get the feature from the feature registry.
-       this.featureProvider = () -> {
-            try {
-                if (FeatureRegistry.getClassForFeatureField(field) != null) {// check if feature is registered.
-                    return (GlobalFeature) FeatureRegistry.getClassForFeatureField(field).newInstance();
-                } else {
-                    throw new IllegalArgumentException("Feature for '" + field + "' is not registered.");
-                }
-            } catch (InstantiationException | IllegalAccessException e) {
-                throw new RuntimeException("Cannot instantiate feature for field: " + field, e);
-            }
-        };
+        this.featureProvider = FeatureRegistry.getFeatureSupplierForFeatureField(field);
+        if (this.featureProvider == null) {
+            throw new IllegalArgumentException("Feature for '" + field + "' is not registered.");
+        }
 
         this.feature = featureProvider.get();
         // debug ...

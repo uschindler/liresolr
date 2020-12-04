@@ -1,6 +1,5 @@
 package net.semanticmetadata.lire.solr;
 
-import net.semanticmetadata.lire.imageanalysis.features.GenericDoubleLireFeature;
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.*;
 import net.semanticmetadata.lire.imageanalysis.features.global.joint.JointHistogram;
@@ -10,6 +9,7 @@ import net.semanticmetadata.lire.solr.features.ShortFeatureCosineDistance;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.function.Supplier;
 
 /**
  * This file is part of LIRE Solr, a Java library for content based image retrieval.
@@ -20,14 +20,14 @@ public class FeatureRegistry {
     /**
      * Naming conventions for code: 2 letters for global features. More for local ones.
      */
-    private static HashMap<String, Class<? extends GlobalFeature>> codeToClass = new HashMap<String, Class<? extends GlobalFeature>>(16);
+    private static HashMap<String, Supplier<GlobalFeature>> codeToSupplier = new HashMap<>();
     /**
      * Caching the entries for fast retrieval or Strings without generating new objects.
      */
-    private static HashMap<String, Class<? extends GlobalFeature>> hashFieldToClass = new HashMap<String, Class<? extends GlobalFeature>>(16);
-    private static HashMap<String, Class<? extends GlobalFeature>> featureFieldToClass = new HashMap<String, Class<? extends GlobalFeature>>(16);
-    private static HashMap<String, String> hashFieldToFeatureField = new HashMap<String, String>(16);
-    private static HashMap<Class<? extends GlobalFeature>, String> classToCode = new HashMap<Class<? extends GlobalFeature>, String>(16);
+    private static HashMap<String, Supplier<GlobalFeature>> hashFieldSupplier = new HashMap<>();
+    private static HashMap<String, Supplier<GlobalFeature>> featureFieldSupplier = new HashMap<>();
+    private static HashMap<String, String> hashFieldToFeatureField = new HashMap<>();
+    private static HashMap<Class<? extends GlobalFeature>, String> classToCode = new HashMap<>();
 
 
     // Constants.
@@ -38,42 +38,39 @@ public class FeatureRegistry {
     static {
         // initial adding of the supported features:
         // classical features from the first implementation
-        codeToClass.put("cl", ColorLayout.class);
-        codeToClass.put("eh", EdgeHistogram.class);
-        codeToClass.put("jc", JCD.class);
-        codeToClass.put("oh", OpponentHistogram.class);
-        codeToClass.put("ph", PHOG.class);
+        codeToSupplier.put("cl", ColorLayout::new);
+        codeToSupplier.put("eh", EdgeHistogram::new);
+        codeToSupplier.put("jc", JCD::new);
+        codeToSupplier.put("oh", OpponentHistogram::new);
+        codeToSupplier.put("ph", PHOG::new);
 
         // additional global features
-        codeToClass.put("ac", AutoColorCorrelogram.class);
-        codeToClass.put("ad", ACCID.class);
-        codeToClass.put("ce", CEDD.class);
-        codeToClass.put("fc", FCTH.class);
-        codeToClass.put("fo", FuzzyOpponentHistogram.class);
-        codeToClass.put("jh", JointHistogram.class);
-        codeToClass.put("sc", ScalableColor.class);
-        codeToClass.put("pc", SPCEDD.class);
+        codeToSupplier.put("ac", AutoColorCorrelogram::new);
+        codeToSupplier.put("ad", ACCID::new);
+        codeToSupplier.put("ce", CEDD::new);
+        codeToSupplier.put("fc", FCTH::new);
+        codeToSupplier.put("fo", FuzzyOpponentHistogram::new);
+        codeToSupplier.put("jh", JointHistogram::new);
+        codeToSupplier.put("sc", ScalableColor::new);
+        codeToSupplier.put("pc", SPCEDD::new);
         // GenericFeatures filled with whatever one prefers.
-        codeToClass.put("df", DoubleFeatureCosineDistance.class);
-//        codeToClass.put("df", GenericGlobalDoubleFeature.class);
-        codeToClass.put("if", GenericGlobalIntFeature.class);
-        codeToClass.put("sf", ShortFeatureCosineDistance.class);
-//        codeToClass.put("sf", GenericGlobalShortFeature.class);
+        codeToSupplier.put("df", DoubleFeatureCosineDistance::new);
+        codeToSupplier.put("if", GenericGlobalIntFeature::new);
+        codeToSupplier.put("sf", ShortFeatureCosineDistance::new);
 
         // local feature based histograms.
-        // codeToClass.put("sim_ce", GenericByteLireFeature.class); // SIMPLE CEDD ... just to give a hint how it might look like.
+        // codeToClass.put("sim_ce", GenericByteLireFeature::new); // SIMPLE CEDD ... just to give a hint how it might look like.
 
         // add your features here if you want more.
         // ....
 
         // -----< caches to be filled >----------------
 
-        for (Iterator<String> iterator = codeToClass.keySet().iterator(); iterator.hasNext(); ) {
-            String code = iterator.next();
-            hashFieldToClass.put(code + hashFieldPostfix, codeToClass.get(code));
-            featureFieldToClass.put(code + featureFieldPostfix, codeToClass.get(code));
+        for (String code : codeToSupplier.keySet()) {
+            hashFieldSupplier.put(code + hashFieldPostfix, codeToSupplier.get(code));
+            featureFieldSupplier.put(code + featureFieldPostfix, codeToSupplier.get(code));
             hashFieldToFeatureField.put(code + hashFieldPostfix, code + featureFieldPostfix);
-            classToCode.put(codeToClass.get(code), code);
+            classToCode.put(codeToSupplier.get(code).get().getClass(), code);
         }
     }
 
@@ -82,8 +79,8 @@ public class FeatureRegistry {
      * @param hashFieldName the name of the hash field
      * @return the class for the given field or null if not registered.
      */
-    public static Class getClassForHashField(String hashFieldName) {
-        return hashFieldToClass.get(hashFieldName);
+    public static Supplier<GlobalFeature> getFeatureSupplierForHashField(String hashFieldName) {
+        return hashFieldSupplier.get(hashFieldName);
     }
 
 
@@ -92,8 +89,8 @@ public class FeatureRegistry {
      * @param featureFieldName the name of the field containing the histogram
      * @return the class for the given field or null if not registered.
      */
-    public static Class getClassForFeatureField(String featureFieldName) {
-        return featureFieldToClass.get(featureFieldName);
+    public static Supplier<GlobalFeature> getFeatureSupplierForFeatureField(String featureFieldName) {
+        return featureFieldSupplier.get(featureFieldName);
     }
 
     /**
@@ -110,7 +107,7 @@ public class FeatureRegistry {
         StringBuilder sb = new StringBuilder();
         sb.append("Registered features:\n");
         sb.append("code\thash field\tfeature field\tclass\n");
-        for (Iterator<String> iterator = codeToClass.keySet().iterator(); iterator.hasNext(); ) {
+        for (Iterator<String> iterator = codeToSupplier.keySet().iterator(); iterator.hasNext(); ) {
             String code = iterator.next();
             sb.append(code);
             sb.append('\t');
@@ -118,7 +115,7 @@ public class FeatureRegistry {
             sb.append('\t');
             sb.append(code+featureFieldPostfix);
             sb.append('\t');
-            sb.append(codeToClass.get(code).getName());
+            sb.append(codeToSupplier.get(code).getClass().getName());
             sb.append('\n');
         }
         return sb.toString();
@@ -128,8 +125,8 @@ public class FeatureRegistry {
         return classToCode.get(featureClass);
     }
 
-    public static Class getClassForCode(String code) {
-        return codeToClass.get(code);
+    public static Supplier<GlobalFeature> getFeatureSupplierForCode(String code) {
+        return codeToSupplier.get(code);
     }
 
     public static String codeToHashField(String code) {
