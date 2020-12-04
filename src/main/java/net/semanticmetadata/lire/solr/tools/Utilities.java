@@ -1,7 +1,10 @@
 package net.semanticmetadata.lire.solr.tools;
 
-import java.io.Serializable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 
 
@@ -16,16 +19,15 @@ public class Utilities {
     }
 
     /**
-     * Sorts a map by value ... from https://stackoverflow.com/questions/109383/sort-a-mapkey-value-by-values
+     * Sorts a map by value descending
      * @param map
      * @param <K>
      * @param <V>
      * @return
      */
-    public static <K, V extends Comparable<? super V>> Map<K, V> sortByValue(Map<K, V> map) {
+    public static <K, V extends Comparable<? super V>> Map<K, V> sortByValueDesc(Map<K, V> map) {
         List<Entry<K, V>> list = new ArrayList<>(map.entrySet());
-        list.sort((Comparator<Entry<K, V>> & Serializable)
-                (c1, c2) -> -c1.getValue().compareTo(c2.getValue()));
+        list.sort(Entry.<K,V>comparingByValue().reversed());
 
         Map<K, V> result = new LinkedHashMap<>();
         for (Entry<K, V> entry : list) {

@@ -142,7 +142,7 @@ public class EncodeAndHashCSV implements Runnable {
         for (int i = 0; i < feature.length; i++) {
             hm.put(classes[i], feature[i]);
         }
-        hm = Utilities.sortByValue(hm);
+        hm = Utilities.sortByValueDesc(hm);
         int i = 0;
         for (Iterator<String> iterator = hm.keySet().iterator(); iterator.hasNext() && i < TOP_N_CLASSES; i++) {
             String cl = iterator.next();
