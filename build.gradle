@@ -1,6 +1,9 @@
 /*
 This is the GRADLE build file for LIRE.
  */
+plugins {
+  id "de.thetaphi.forbiddenapis" version "3.1"
+}
 apply plugin: 'java'
 apply plugin: 'project-report'
 
@@ -13,52 +16,22 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven {
-        url 'http://maven.restlet.org'
+        url 'https://maven.restlet.talend.com/'
     }
 }
 
 dependencies {
-    // ---< Lucene >---
-    compile group: 'org.apache.lucene', name: 'lucene-core', version: solrVersion
-    compile group: 'org.apache.lucene', name: 'lucene-analyzers-common', version: solrVersion
-    compile group: 'org.apache.lucene', name: 'lucene-queryparser', version: solrVersion
-    compile group: 'org.apache.lucene', name: 'lucene-queries', version: solrVersion
-
     // ---< Solr >---
-    // https://mvnrepository.com/artifact/org.apache.solr/solr-core
     compile group: 'org.apache.solr', name: 'solr-core', version: solrVersion
-    // https://mvnrepository.com/artifact/org.apache.solr/solr-dataimporthandler
     compile group: 'org.apache.solr', name: 'solr-dataimporthandler', version: solrVersion
-    compile group: 'org.apache.solr', name: 'solr-solrj', version: solrVersion
-    // https://mvnrepository.com/artifact/org.apache.solr/solr-solrj
 
     // ---< Commons >---
-    compile group: 'commons-io', name: 'commons-io', version: '2.6'
-    compile group: 'org.apache.commons', name: 'commons-math3', version: '3.6.1'
-    // https://mvnrepository.com/artifact/commons-codec/commons-codec
-    compile group: 'commons-codec', name: 'commons-codec', version: '1.11'
-    // https://mvnrepository.com/artifact/commons-cli/commons-cli
     compile group: 'commons-cli', name: 'commons-cli', version: '1.4'
-    // https://mvnrepository.com/artifact/com.sangupta/jopensurf
-    compile group: 'com.sangupta', name: 'jopensurf', version: '1.0.0'
-    // https://mvnrepository.com/artifact/org.bytedeco.javacpp-presets/opencv
-    // compile group: 'org.bytedeco.javacpp-presets', name: 'opencv', version: '2.4.11-0.11'
-
-    // ---< Helper files >---
-    // https://mvnrepository.com/artifact/com.twelvemonkeys.imageio/imageio-jpeg
-    compile group: 'com.twelvemonkeys.imageio', name: 'imageio-jpeg', version: '3.4.1'
-
-    // ---< Dom4j & Jaxen for XPath because StaX is often too complicated >---
-    compile 'org.dom4j:dom4j:2.1.1'
-    compile 'jaxen:jaxen:1.1.6'
 
     // ---< Current version of LIRE >---
     compile fileTree(dir: 'lib', include: '*.jar')
-    runtime fileTree(dir: 'lib', include: '*.jar')
 
-    // https://mvnrepository.com/artifact/junit/junit
     testCompile group: 'junit', name: 'junit', version: '4.12'
-
 }
 
 
@@ -172,3 +145,7 @@ task runFlickrDownloader(type: JavaExec) {
     args('-o auto -n 20'.split(' '))
 }
 
+forbiddenApis {
+  // TODO: bundledSignatures = [ 'jdk-unsafe', 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection' ]
+  bundledSignatures = [ 'jdk-deprecated', 'jdk-non-portable', 'jdk-reflection' ]
+}
