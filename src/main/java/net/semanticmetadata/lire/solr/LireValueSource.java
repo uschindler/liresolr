@@ -65,7 +65,7 @@ import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
  *
  * @author Mathias Lux, 17.09.13 12:26, Uwe Schindler (Solr 7/8 fixes)
  */
-public class LireValueSource extends ValueSource {
+public final class LireValueSource extends ValueSource {
     final String field;
     final double maxDistance;
     private final byte[] hist;
@@ -78,7 +78,10 @@ public class LireValueSource extends ValueSource {
      * @param maxDistance  the distance value returned if there is no distance calculation possible.
      */
     public LireValueSource(String featureField, byte[] hist, double maxDistance) {
-        this.field = (featureField != null) ? normalizeFieldName(featureField) : "cl_hi";  // default field
+        Objects.requireNonNull(featureField, "featureField");
+        Objects.requireNonNull(hist, "hist");
+        
+        this.field = featureField;
         this.hist = hist;
         this.maxDistance = maxDistance;
 
@@ -94,13 +97,6 @@ public class LireValueSource extends ValueSource {
         feature.setByteArrayRepresentation(hist);
     }
     
-    private static String normalizeFieldName(String field) {
-      if (!field.endsWith(FeatureRegistry.featureFieldPostfix)) {
-        field += FeatureRegistry.featureFieldPostfix;
-      }
-      return field;
-    }
-
     /**
      * Check also {@link org.apache.lucene.queries.function.valuesource.BytesRefFieldSource}
      */

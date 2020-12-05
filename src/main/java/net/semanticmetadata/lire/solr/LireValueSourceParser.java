@@ -39,6 +39,8 @@
 
 package net.semanticmetadata.lire.solr;
 
+import java.util.Objects;
+
 import org.apache.commons.codec.binary.Base64;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.solr.common.util.NamedList;
@@ -59,7 +61,7 @@ import org.apache.solr.search.ValueSourceParser;
  * The first parameter gives the field (cl, ph, eh, or jc), the second gives the byte[] representation of the
  * histogram in Base64 encoding
  *
- * @author Mathias Lux, mathias@juggle.at, 17.09.2013
+ * @author Mathias Lux, mathias@juggle.at, 17.09.2013, Uwe Schindler (Solr 7/8 fixes)
  */
 public class LireValueSourceParser extends ValueSourceParser {
     public void init(NamedList namedList) {
@@ -68,13 +70,16 @@ public class LireValueSourceParser extends ValueSourceParser {
 
     @Override
     public ValueSource parse(FunctionQParser fp) throws SyntaxError {
-        String field=fp.parseArg();                          // eg. cl_hi
-        String featureString = fp.parseArg();
-        // System.out.println(featureString);
-        byte[] hist= Base64.decodeBase64(featureString);     // eg. FQY5DhMYDg0ODg0PEBEPDg4ODg8QEgsgEBAQEBAgEBAQEBA=
+        String field = Objects.requireNonNull(fp.parseArg(), "missing argument: field"); // eg. cl_hi
+        if (!field.endsWith(FeatureRegistry.featureFieldPostfix)) {
+          field += FeatureRegistry.featureFieldPostfix;
+        }
+        String featureString = Objects.requireNonNull(fp.parseArg(), "missing argument: histogram");
+        byte[] hist= Base64.decodeBase64(featureString);
         double maxDistance = Double.MAX_VALUE;
-        if (fp.hasMoreArguments()) {                           // if there is a third argument, it's the max value to return if there is none. Note the query cache is not updated upon parameter change.
-            maxDistance = Double.parseDouble(fp.parseArg());
+        // if there is a third argument, it's the max value to return if there is none.
+        if (fp.hasMoreArguments()) {
+            maxDistance = fp.parseDouble();
         }
         return new LireValueSource(field, hist, maxDistance);
     }
