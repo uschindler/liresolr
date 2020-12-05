@@ -14,25 +14,19 @@ import java.util.zip.GZIPInputStream;
 public class HashingMetricSpacesManager {
     /**
      * Pre-load the static members of MetricSpaces to make sure hash generation is on time.
+     * @throws InstantiationException 
+     * @throws IllegalAccessException 
+     * @throws ClassNotFoundException 
      */
-    public static void init() {
-        ClassLoader classloader = Thread.currentThread().getContextClassLoader();
-        try {
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_CEDD.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_ColorLayout.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_EdgeHistogram.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_FCTH.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_OpponentHistogram.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_PHOG.msd.gz")));
-            MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/jpg_us_filter_JCD.msd.gz")));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        try {
-            BitSampling.readHashFunctions(classloader.getResourceAsStream("lsh/LshBitSampling_2048.obj")); // load BitSampling data from disk.
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
+    public static void init() throws IOException, ReflectiveOperationException {
+        ClassLoader classloader = HashingMetricSpacesManager.class.getClassLoader();
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_CEDD.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_ColorLayout.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_EdgeHistogram.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_FCTH.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_OpponentHistogram.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/logos-ca-ee_PHOG.msd.gz")));
+        MetricSpaces.loadReferencePoints(new GZIPInputStream(classloader.getResourceAsStream("metricspaces/jpg_us_filter_JCD.msd.gz")));
+        BitSampling.readHashFunctions(classloader.getResourceAsStream("lsh/LshBitSampling_2048.obj")); // load BitSampling data from disk.
     }
 }

@@ -132,7 +132,11 @@ public class LireRequestHandler extends RequestHandlerBase {
     private static final boolean DEFAULT_USE_METRIC_SPACES = false;
 
     static {
-        HashingMetricSpacesManager.init(); // load reference points from disk.
+        try {
+          HashingMetricSpacesManager.init();
+        } catch (IOException | ReflectiveOperationException e) {  // load reference points from disk.
+          throw new Error("Cannot initialize class, because resources are missing.", e);
+        }
     }
 
 
@@ -246,23 +250,20 @@ public class LireRequestHandler extends RequestHandlerBase {
      *
      * @param req
      * @return either a query from the QueryParser or null
+     * @throws SyntaxError 
      */
-    private List<Query> getFilterQueries(SolrQueryRequest req) {
+    private List<Query> getFilterQueries(SolrQueryRequest req) throws SyntaxError {
         List<Query> filters = null;
 
         String[] fqs = req.getParams().getParams("fq");
         if (fqs != null && fqs.length != 0) {
             filters = new ArrayList<>(fqs.length);
-            try {
-                for (String fq : fqs) {
-                    if (fq != null && fq.trim().length() != 0) {
-                        QParser fqp = QParser.getParser(fq, req);
-                        fqp.setIsFilter(true);
-                        filters.add(fqp.getQuery());
-                    }
+            for (String fq : fqs) {
+                if (fq != null && fq.trim().length() != 0) {
+                    QParser fqp = QParser.getParser(fq, req);
+                    fqp.setIsFilter(true);
+                    filters.add(fqp.getQuery());
                 }
-            } catch (SyntaxError e) {
-                e.printStackTrace();
             }
 
             if (filters.isEmpty()) {
@@ -278,8 +279,9 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
+     * @throws SyntaxError 
      */
-    private void handleRandomSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
+    private void handleRandomSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, SyntaxError {
         SolrIndexSearcher searcher = req.getSearcher();
         Query query = new MatchAllDocsQuery();
         DocList docList = searcher.getDocList(query, getFilterQueries(req), Sort.RELEVANCE, 0, numberOfCandidateResults, 0);
@@ -309,8 +311,10 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
+     * @throws SyntaxError 
+     * @throws ParseException 
      */
-    private void handleUrlSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
+    private void handleUrlSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, SyntaxError, ParseException {
         SolrParams params = req.getParams();
         String paramUrl = params.get("url");
         String paramField = req.getParams().get("field", "cl_ha");
@@ -326,33 +330,27 @@ public class LireRequestHandler extends RequestHandlerBase {
         final GlobalFeature feat = FeatureRegistry.getFeatureSupplierForHashField(paramField).get();
         int[] hashes = null;
         Query query = null;
-        // wrapping the whole part in the try
-        try {
-            BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
-            img = ImageUtils.trimWhiteSpace(img);
-            // getting the right feature per field:
-            feat.extract(img);
+        BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
+        img = ImageUtils.trimWhiteSpace(img);
+        // getting the right feature per field:
+        feat.extract(img);
 
-            if (!useMetricSpaces) {
-                // Re-generating the hashes to save space (instead of storing them in the index)
-                HashTermStatistics.addToStatistics(req.getSearcher(), paramField);
-                hashes = BitSampling.generateHashes(feat.getFeatureVector());
-                query = createQuery(hashes, paramField, numberOfQueryTerms);
-            } else if (MetricSpaces.supportsFeature(feat)) {
-                // ----< Metric Spaces >-----
-                int queryLength = (int) StatsUtils.clamp(numberOfQueryTerms * MetricSpaces.getPostingListLength(feat), 3, MetricSpaces.getPostingListLength(feat));
-                String msQuery = MetricSpaces.generateBoostedQuery(feat, queryLength);
-                QueryParser qp = new QueryParser(paramField.replace("_ha", "_ms"), new WhitespaceAnalyzer());
-                query = qp.parse(msQuery);
-            } else {
-                rsp.add("Error", "Feature not supported by MetricSpaces: " + feat.getClass().getSimpleName());
-                query = new MatchAllDocsQuery();
-            }
-
-        } catch (Exception e) {
-            rsp.add("Error", "Error reading image from URL: " + paramUrl + ": " + e.getMessage());
-            e.printStackTrace();
+        if (!useMetricSpaces) {
+            // Re-generating the hashes to save space (instead of storing them in the index)
+            HashTermStatistics.addToStatistics(req.getSearcher(), paramField);
+            hashes = BitSampling.generateHashes(feat.getFeatureVector());
+            query = createQuery(hashes, paramField, numberOfQueryTerms);
+        } else if (MetricSpaces.supportsFeature(feat)) {
+            // ----< Metric Spaces >-----
+            int queryLength = (int) StatsUtils.clamp(numberOfQueryTerms * MetricSpaces.getPostingListLength(feat), 3, MetricSpaces.getPostingListLength(feat));
+            String msQuery = MetricSpaces.generateBoostedQuery(feat, queryLength);
+            QueryParser qp = new QueryParser(paramField.replace("_ha", "_ms"), new WhitespaceAnalyzer());
+            query = qp.parse(msQuery);
+        } else {
+            rsp.add("Error", "Feature not supported by MetricSpaces: " + feat.getClass().getSimpleName());
+            query = new MatchAllDocsQuery();
         }
+
         // search if the feature has been extracted and query is there.
         if (query != null) {
             doSearch(req, rsp, req.getSearcher(), paramField, paramRows, getFilterQueries(req), query, feat);
@@ -376,51 +374,45 @@ public class LireRequestHandler extends RequestHandlerBase {
         useMetricSpaces = req.getParams().getBool("ms", DEFAULT_USE_METRIC_SPACES);
         double accuracy = req.getParams().getDouble("accuracy", DEFAULT_NUMBER_OF_QUERY_TERMS);
         GlobalFeature feat;
-        // wrapping the whole part in the try
-        try {
-            if (!paramField.startsWith("sf")) {
-                BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
-                img = ImageUtils.trimWhiteSpace(img);
-                // getting the right feature per field:
-                final Supplier<GlobalFeature> suppl = FeatureRegistry.getFeatureSupplierForHashField(paramField);
-                if (suppl == null) {
-                    feat = new ColorLayout();
-                } else {
-                    feat = suppl.get();
-                }
-                feat.extract(img);
+        if (!paramField.startsWith("sf")) {
+            BufferedImage img = ImageIO.read(new URL(paramUrl).openStream());
+            img = ImageUtils.trimWhiteSpace(img);
+            // getting the right feature per field:
+            final Supplier<GlobalFeature> suppl = FeatureRegistry.getFeatureSupplierForHashField(paramField);
+            if (suppl == null) {
+                feat = new ColorLayout();
             } else {
-                // we assume that this is a generic short feature, like it is used in context of deep features.
-                feat = new ShortFeatureCosineDistance();
-                String[] featureDoublesAsStrings = paramUrl.split(",");
-                double[] featureDoubles = new double[featureDoublesAsStrings.length];
-                for (int i = 0; i < featureDoubles.length; i++) {
-                    featureDoubles[i] = Double.parseDouble(featureDoublesAsStrings[i]);
-                }
-                featureDoubles = Utilities.toCutOffArray(featureDoubles, EncodeAndHashCSV.TOP_N_CLASSES); // max norm
-                short[] featureShort = Utilities.toShortArray(featureDoubles); // quantize
-                ((ShortFeatureCosineDistance) feat).setData(featureShort);
+                feat = suppl.get();
             }
-            rsp.add("histogram", Base64.encodeBase64String(feat.getByteArrayRepresentation()));
-            if (!useMetricSpaces || true) { // select the most distinguishing hashes and deliver them back.
-                HashTermStatistics.addToStatistics(req.getSearcher(), paramField);
-                int[] hashes = BitSampling.generateHashes(feat.getFeatureVector());
-                List<String> hashStrings = orderHashes(hashes, paramField, false);
-                rsp.add("bs_list", hashStrings);
-                List<String> hashQuery = orderHashes(hashes, paramField, true);
-                int queryLength = (int) StatsUtils.clamp(accuracy * hashes.length,
-                        3, hashQuery.size());
-                rsp.add("bs_query", String.join(" ", hashQuery.subList(0, queryLength)));
+            feat.extract(img);
+        } else {
+            // we assume that this is a generic short feature, like it is used in context of deep features.
+            feat = new ShortFeatureCosineDistance();
+            String[] featureDoublesAsStrings = paramUrl.split(",");
+            double[] featureDoubles = new double[featureDoublesAsStrings.length];
+            for (int i = 0; i < featureDoubles.length; i++) {
+                featureDoubles[i] = Double.parseDouble(featureDoublesAsStrings[i]);
             }
-            if (MetricSpaces.supportsFeature(feat)) {
-                rsp.add("ms_list", MetricSpaces.generateHashList(feat));
-                int queryLength = (int) StatsUtils.clamp(accuracy * MetricSpaces.getPostingListLength(feat),
-                        3, MetricSpaces.getPostingListLength(feat));
-                rsp.add("ms_query", MetricSpaces.generateBoostedQuery(feat, queryLength));
-            }
-        } catch (Exception e) {
-            rsp.add("Error", "Error reading image from URL: " + paramUrl + ": " + e.getMessage());
-            e.printStackTrace();
+            featureDoubles = Utilities.toCutOffArray(featureDoubles, EncodeAndHashCSV.TOP_N_CLASSES); // max norm
+            short[] featureShort = Utilities.toShortArray(featureDoubles); // quantize
+            ((ShortFeatureCosineDistance) feat).setData(featureShort);
+        }
+        rsp.add("histogram", Base64.encodeBase64String(feat.getByteArrayRepresentation()));
+        if (!useMetricSpaces || true) { // select the most distinguishing hashes and deliver them back.
+            HashTermStatistics.addToStatistics(req.getSearcher(), paramField);
+            int[] hashes = BitSampling.generateHashes(feat.getFeatureVector());
+            List<String> hashStrings = orderHashes(hashes, paramField, false);
+            rsp.add("bs_list", hashStrings);
+            List<String> hashQuery = orderHashes(hashes, paramField, true);
+            int queryLength = (int) StatsUtils.clamp(accuracy * hashes.length,
+                    3, hashQuery.size());
+            rsp.add("bs_query", String.join(" ", hashQuery.subList(0, queryLength)));
+        }
+        if (MetricSpaces.supportsFeature(feat)) {
+            rsp.add("ms_list", MetricSpaces.generateHashList(feat));
+            int queryLength = (int) StatsUtils.clamp(accuracy * MetricSpaces.getPostingListLength(feat),
+                    3, MetricSpaces.getPostingListLength(feat));
+            rsp.add("ms_query", MetricSpaces.generateBoostedQuery(feat, queryLength));
         }
     }
 
@@ -430,8 +422,10 @@ public class LireRequestHandler extends RequestHandlerBase {
      * @param req
      * @param rsp
      * @throws IOException
+     * @throws SyntaxError 
+     * @throws ParseException 
      */
-    private void handleHashSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException {
+    private void handleHashSearch(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, SyntaxError, ParseException {
         SolrParams params = req.getParams();
         SolrIndexSearcher searcher = req.getSearcher();
         // get the params needed:
@@ -484,12 +478,7 @@ public class LireRequestHandler extends RequestHandlerBase {
         }
 
 
-        Query query = null;
-        try {
-            query = qp.parse(queryString);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
+        Query query = qp.parse(queryString);
 
         // get results:
         doSearch(req, rsp, searcher, paramField, paramRows, getFilterQueries(req), query, queryFeature);

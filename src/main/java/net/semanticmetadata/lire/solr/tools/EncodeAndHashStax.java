@@ -12,7 +12,7 @@ import java.util.Base64;
 
 public class EncodeAndHashStax {
     static BufferedWriter bw;
-    public static void main(String[] args) throws XMLStreamException, IOException {
+    public static void main(String[] args) throws XMLStreamException, IOException, ReflectiveOperationException {
         HashingMetricSpacesManager.init();
 
         bw = new BufferedWriter(new FileWriter("150k_out.xml"));

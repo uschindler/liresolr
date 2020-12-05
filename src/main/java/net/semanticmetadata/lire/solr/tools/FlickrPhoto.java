@@ -19,7 +19,7 @@ import java.util.List;
  *
  * @author Mathias Lux, mathias@juggle.at, Dec 2016
  */
-public class FlickrPhoto implements Runnable {
+public class FlickrPhoto {
     String title, url, photourl, authorName, authorID;
     BufferedImage img = null;
     List<String> tags;
@@ -51,7 +51,7 @@ public class FlickrPhoto implements Runnable {
         return title + ": " + url + " (" + photourl + ")";
     }
 
-    public void generateSolrDocument() throws IOException {
+    public Void generateSolrDocument() throws IOException {
         xml = null;
         StringBuilder bw = new StringBuilder(1024);
         bw.append("<doc>");
@@ -78,6 +78,7 @@ public class FlickrPhoto implements Runnable {
         writeFeature(image, new ScalableColor(), "sc", bw);
         bw.append("</doc>\n");
         xml = bw.toString();
+        return null;
     }
 
     private String saveFile(BufferedImage image) throws IOException {
@@ -102,13 +103,4 @@ public class FlickrPhoto implements Runnable {
         return xml;
     }
 
-    @Override
-    public void run() {
-        try {
-            generateSolrDocument();
-        } catch (Exception e) {
-            e.printStackTrace();
-            xml = null;
-        }
-    }
 }

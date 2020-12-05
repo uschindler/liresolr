@@ -1,7 +1,6 @@
 package net.semanticmetadata.lire.solr.tools;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
-import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalByteFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalDoubleFeature;
 import net.semanticmetadata.lire.imageanalysis.features.global.GenericGlobalShortFeature;
 import net.semanticmetadata.lire.indexers.hashing.BitSampling;
@@ -23,7 +22,7 @@ public class DataConversion {
             "-t \t type to be expected, using double as a default.\n" +
             "-d \t actual data in the for of \"0.55;0.33;...\"";
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, ReflectiveOperationException {
         // TODO: integrate Bitsampling ...
         HashingMetricSpacesManager.init();
         // parse arguments
@@ -67,21 +66,6 @@ public class DataConversion {
         }
         f.setData(d);
         return f;
-//        int[] hashes = BitSampling.generateHashes(f.getFeatureVector());
-//        return f.getByteArrayRepresentation();
-    }
-
-    private static GlobalFeature getByte(String data) {
-        GenericGlobalByteFeature f = new GenericGlobalByteFeature();
-        String[] numbers = data.split(";");
-        byte[] d = new byte[numbers.length];
-        for (int i = 0; i < numbers.length; i++) {
-            d[i] = Byte.parseByte(numbers[i]);
-        }
-        f.setData(d);
-        return f;
-//        int[] hashes = BitSampling.generateHashes(f.getFeatureVector());
-//        return f.getByteArrayRepresentation();
     }
 
 }

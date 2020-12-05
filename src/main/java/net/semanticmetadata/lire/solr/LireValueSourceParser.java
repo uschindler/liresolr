@@ -64,7 +64,7 @@ import org.apache.solr.search.ValueSourceParser;
  * @author Mathias Lux, mathias@juggle.at, 17.09.2013, Uwe Schindler (Solr 7/8 fixes)
  */
 public class LireValueSourceParser extends ValueSourceParser {
-    public void init(NamedList namedList) {
+    public void init(@SuppressWarnings("rawtypes") NamedList namedList) {
 
     }
 

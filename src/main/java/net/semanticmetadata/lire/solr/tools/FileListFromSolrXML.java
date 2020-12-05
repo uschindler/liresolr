@@ -17,17 +17,13 @@ public class FileListFromSolrXML implements Runnable {
         this.infile = infile;
     }
 
-    public FileListFromSolrXML(File infile, File outfile) {
+    public FileListFromSolrXML(File infile, File outfile) throws IOException {
         this.infile = infile;
         this.outfile = outfile;
-        try {
-            outStream = new PrintStream(new FileOutputStream(outfile));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
+        this.outStream = new PrintStream(new FileOutputStream(outfile));
     }
 
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) throws ParseException, IOException {
         File infile = null, outfile = null;
 
         Options options = new Options();
@@ -81,9 +77,9 @@ public class FileListFromSolrXML implements Runnable {
                 outStream.println(file_path);
             }
         } catch (DocumentException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException(e);
         }
         outStream.close();
     }

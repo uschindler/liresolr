@@ -57,6 +57,7 @@ import java.io.*;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -88,7 +89,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  *
  * @author Mathias Lux, mathias@juggle.at on  13.08.2013
  */
-public class ParallelSolrIndexer implements Runnable {
+public class ParallelSolrIndexer implements Callable<Void> {
     private final int maxCacheSize = 250;
     //    private static HashMap<Class, String> classToPrefix = new HashMap<Class, String>(5);
     private boolean force = false;
@@ -110,7 +111,7 @@ public class ParallelSolrIndexer implements Runnable {
     private boolean isPreprocessing = true;
     private Class<? extends ImageDataProcessor> imageDataProcessor = null;
 
-    public ParallelSolrIndexer() {
+    public ParallelSolrIndexer() throws IOException, ReflectiveOperationException {
         // default constructor.
         featureCodes = new HashSet<>();
         featureCodes.add(FeatureRegistry.getCodeForClass(PHOG.class));
@@ -131,7 +132,7 @@ public class ParallelSolrIndexer implements Runnable {
         ParallelSolrIndexer.numberOfThreads = numberOfThreads;
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, ReflectiveOperationException, InterruptedException {
         HashingMetricSpacesManager.init();
         ParallelSolrIndexer e = new ParallelSolrIndexer();
 
@@ -159,7 +160,6 @@ public class ParallelSolrIndexer implements Runnable {
                         if (s > 10)
                             e.setMaxSideLength(s);
                     } catch (NumberFormatException e1) {
-                        e1.printStackTrace();
                         printHelp();
                     }
                 } else printHelp();
@@ -204,9 +204,8 @@ public class ParallelSolrIndexer implements Runnable {
                 if ((i + 1) < args.length)
                     try {
                         ParallelSolrIndexer.numberOfThreads = Integer.parseInt(args[i + 1]);
-                    } catch (Exception e1) {
-                        System.err.println("Could not set number of threads to \"" + args[i + 1] + "\".");
-                        e1.printStackTrace();
+                    } catch (NumberFormatException e1) {
+                        System.err.println("Could not parse number of threads from \"" + args[i + 1] + "\".");
                     }
                 else printHelp();
             }
@@ -215,7 +214,7 @@ public class ParallelSolrIndexer implements Runnable {
         if (!e.isConfigured()) {
             printHelp();
         } else {
-            e.run();
+            e.call();
         }
     }
 
@@ -311,52 +310,44 @@ public class ParallelSolrIndexer implements Runnable {
     }
 
     @Override
-    public void run() {
+    public Void call() throws IOException, InterruptedException {
         // check:
         if (fileList == null || !fileList.exists()) {
             System.err.println("No text file with a list of images given.");
-            return;
+            return null; // Void
         }
         System.out.println("Extracting features: ");
         for (String code : featureCodes) {
             System.out.println("\t" + code);
         }
-        try {
-            if (!individualFiles) {
-                // create a BufferedOutputStream with a large buffer
-                dos = new BufferedOutputStream(new FileOutputStream(outFile), 1024 * 1024 * 8);
-                dos.write("<add>\n".getBytes());
-            }
-            Thread p = new Thread(new Producer(), "Producer");
-            p.start();
-            LinkedList<Thread> threads = new LinkedList<Thread>();
-            long l = System.currentTimeMillis();
-            for (int i = 0; i < numberOfThreads; i++) {
-                Thread c = new Thread(new Consumer(), "Consumer-" + i);
-                c.start();
-                threads.add(c);
-            }
-            if (ParallelSolrIndexer.numberOfThreads > 1) {
-                Thread m = new Thread(new Monitoring(), "Monitoring");
-                m.start();
-            }
-            for (Iterator<Thread> iterator = threads.iterator(); iterator.hasNext(); ) {
-                iterator.next().join();
-            }
-            long l1 = System.currentTimeMillis() - l;
-            System.out.println("Analyzed " + overallCount + " images in " + l1 / 1000 + " seconds, ~" + (overallCount > 0 ? (l1 / overallCount) : "inf.") + " ms each.");
-            if (!individualFiles) {
-                dos.write("</add>\n".getBytes());
-                dos.close();
-            }
-//            writer.commit();
-//            writer.close();
-//            threadFinished = true;
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (!individualFiles) {
+            // create a BufferedOutputStream with a large buffer
+            dos = new BufferedOutputStream(new FileOutputStream(outFile), 1024 * 1024 * 8);
+            dos.write("<add>\n".getBytes());
         }
-
+        Thread p = new Thread(new Producer(), "Producer");
+        p.start();
+        LinkedList<Thread> threads = new LinkedList<Thread>();
+        long l = System.currentTimeMillis();
+        for (int i = 0; i < numberOfThreads; i++) {
+            Thread c = new Thread(new Consumer(), "Consumer-" + i);
+            c.start();
+            threads.add(c);
+        }
+        if (ParallelSolrIndexer.numberOfThreads > 1) {
+            Thread m = new Thread(new Monitoring(), "Monitoring");
+            m.start();
+        }
+        for (Iterator<Thread> iterator = threads.iterator(); iterator.hasNext(); ) {
+            iterator.next().join();
+        }
+        long l1 = System.currentTimeMillis() - l;
+        System.out.println("Analyzed " + overallCount + " images in " + l1 / 1000 + " seconds, ~" + (overallCount > 0 ? (l1 / overallCount) : "inf.") + " ms each.");
+        if (!individualFiles) {
+            dos.write("</add>\n".getBytes());
+            dos.close();
+        }
+        return null; // Void
     }
 
     private void addFeatures(List<GlobalFeature> features) {
@@ -392,12 +383,13 @@ public class ParallelSolrIndexer implements Runnable {
     }
 
     class Monitoring implements Runnable {
+        @SuppressWarnings("synthetic-access")
         public void run() {
             long ms = System.currentTimeMillis();
             try {
                 Thread.sleep(1000 * monitoringInterval); // wait xx seconds
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
             while (!ended) {
                 try {
@@ -406,26 +398,25 @@ public class ParallelSolrIndexer implements Runnable {
                     System.out.println("Analyzed " + overallCount + " images in " + time / 1000 + " seconds, " + ((overallCount > 0) ? (time / overallCount) : "n.a.") + " ms each (" + images.size() + " images currently in queue).");
                     Thread.sleep(1000 * monitoringInterval); // wait xx seconds
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    throw new RuntimeException(e);
                 }
             }
         }
     }
 
     class Producer implements Runnable {
+        @SuppressWarnings("synthetic-access")
         public void run() {
-            try {
-                BufferedReader br = new BufferedReader(new FileReader(fileList));
+            try (BufferedReader br = new BufferedReader(new FileReader(fileList))) {
                 String file = null;
                 File next = null;
                 while ((file = br.readLine()) != null) {
                     next = new File(file);
-                    try {
+                    try (FileInputStream fis = new FileInputStream(next)) {
                         // reading from hard drive to buffer to reduce the load on the HDD and move decoding to the
                         // consumers using java.nio
                         int fileSize = (int) next.length();
                         byte[] buffer = new byte[fileSize];
-                        FileInputStream fis = new FileInputStream(next);
                         FileChannel channel = fis.getChannel();
                         MappedByteBuffer map = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
                         map.load();
@@ -439,15 +430,12 @@ public class ParallelSolrIndexer implements Runnable {
                 for (int i = 0; i < numberOfThreads*2; i++) {
                     String tmpString = null;
                     byte[] tmpImg = null;
-                    try {
-                        images.put(new WorkItem(tmpString, tmpImg));
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+                    images.put(new WorkItem(tmpString, tmpImg));
+
                 }
 
-            } catch (IOException e) {
-                e.printStackTrace();
+            } catch (IOException | InterruptedException e) {
+                throw new RuntimeException(e);
             }
             ended = true;
         }
@@ -460,10 +448,12 @@ public class ParallelSolrIndexer implements Runnable {
         boolean locallyEnded = false;
         StringBuilder sb = new StringBuilder(1024);
 
+        @SuppressWarnings("synthetic-access")
         Consumer() {
             addFeatures(features);
         }
 
+        @SuppressWarnings("synthetic-access")
         public void run() {
             while (!locallyEnded) {
                 try {
@@ -518,8 +508,7 @@ public class ParallelSolrIndexer implements Runnable {
                                 idp = imageDataProcessor.newInstance();
                             }
                         } catch (Exception e) {
-                            System.err.println("Could not instantiate ImageDataProcessor!");
-                            e.printStackTrace();
+                            throw new RuntimeException("Could not instantiate ImageDataProcessor!", e);
                         }
                         // --------< creating doc >-------------------------
                         sb.append("<doc>");
@@ -587,8 +576,7 @@ public class ParallelSolrIndexer implements Runnable {
 //                        }
 //                    }
                 } catch (Exception e) {
-                    System.err.println("Error processing file " + tmp.getFileName());
-                    e.printStackTrace();
+                    throw new RuntimeException("Error processing file " + tmp.getFileName(), e);
                 }
             }
         }

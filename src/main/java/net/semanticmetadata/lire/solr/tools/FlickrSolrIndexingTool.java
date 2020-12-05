@@ -30,17 +30,13 @@ public class FlickrSolrIndexingTool {
     private static int numThreads = 8;
     protected static boolean saveDownloadedImages = false;
 
-    public static void main(String[] args) throws ParserConfigurationException, SAXException, IOException, InterruptedException {
+    public static void main(String[] args) throws ParserConfigurationException, SAXException, IOException, InterruptedException, ReflectiveOperationException {
         HashingMetricSpacesManager.init();
         int numberOfImages = 20;
 
         Properties p = CommandLineUtils.getProperties(args, helpMessage, new String[]{"-o"});
         if (p.get("-n") != null) {
-            try {
-                numberOfImages = Integer.parseInt(p.getProperty("-n"));
-            } catch (NumberFormatException e) {
-                e.printStackTrace();
-            }
+            numberOfImages = Integer.parseInt(p.getProperty("-n"));
         }
         if (p.get("-s") != null) {
             FlickrSolrIndexingTool.saveDownloadedImages = true;
@@ -59,11 +55,7 @@ public class FlickrSolrIndexingTool {
                         images.add(photo);
                     } else break;
                 } else {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+                    Thread.sleep(1000);
                 }
             }
         }
@@ -77,7 +69,7 @@ public class FlickrSolrIndexingTool {
         ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
         System.out.println("Setting up thread pool.");
         for (FlickrPhoto photo : images) {
-            executorService.execute(photo);
+            executorService.submit(photo::generateSolrDocument);
             // System.out.print(',');
         }
         System.out.println("Waiting for thread pool to be finished.");

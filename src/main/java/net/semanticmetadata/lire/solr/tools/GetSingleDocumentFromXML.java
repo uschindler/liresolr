@@ -54,10 +54,8 @@ public class GetSingleDocumentFromXML implements Runnable{
                     XMLWriter w = new XMLWriter(System.out, OutputFormat.createPrettyPrint());
                     w.write(d);
                     w.flush();
-                } catch (UnsupportedEncodingException e) {
-                    e.printStackTrace();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    throw new UncheckedIOException(e);
                 }
             }
         }

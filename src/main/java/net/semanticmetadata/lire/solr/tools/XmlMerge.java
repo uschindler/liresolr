@@ -9,9 +9,10 @@ import org.dom4j.io.SAXReader;
 import java.io.*;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.concurrent.Callable;
 
 
-public class XmlMerge implements Runnable {
+public class XmlMerge implements Callable<Void> {
     File fileA, fileB;
     File outFile;
 
@@ -60,7 +61,7 @@ public class XmlMerge implements Runnable {
         }
 
         XmlMerge m = new XmlMerge(fileA, fileB, outFile);
-        m.run();
+        m.call();
     }
 
     private static void printHelp(Options options) {
@@ -68,65 +69,61 @@ public class XmlMerge implements Runnable {
         f.printHelp("XmlMerge <fileA> <fileB>", options);
     }
 
-    public void run() {
-        try {
-            System.out.println(String.format("# Parsing document %s", fileA.getPath()));
-            Document srcDocument = parse(new FileInputStream(fileA));
-            System.out.println(String.format("# Parsing document %s", fileB.getPath()));
-            Document targetDocument = parse(new FileInputStream(fileB));
+    @Override
+    public Void call() throws DocumentException, IOException {
+        System.out.println(String.format("# Parsing document %s", fileA.getPath()));
+        Document srcDocument = parse(new FileInputStream(fileA));
+        System.out.println(String.format("# Parsing document %s", fileB.getPath()));
+        Document targetDocument = parse(new FileInputStream(fileB));
 
-            Element targetRoot = targetDocument.getRootElement();
-            int numDocs = targetRoot.elements().size();
-            int countDocs = 0;
+        Element targetRoot = targetDocument.getRootElement();
+        int numDocs = targetRoot.elements().size();
+        int countDocs = 0;
 
-            // we need to cache the src documents nodes by their ids ...
-            System.out.println("# Caching nodes");
-            HashMap<String, Element> nodeCache = new HashMap<>(10000);
-            Iterator<Element> docIterator = srcDocument.getRootElement().elementIterator("doc");
-            while (docIterator.hasNext()) {
-                Element doc = docIterator.next();
-                String id = doc.selectSingleNode("field[@name='id']").getText();
-                nodeCache.put(id, (Element) doc.detach());
-            }
-            System.out.println("# " + nodeCache.size() + " nodes cached from " + fileA.getPath());
-            System.out.println("# Merging data");
-            docIterator = targetRoot.elementIterator("doc");
-            while (docIterator.hasNext()) {
-                Element targetDoc = docIterator.next();
-                String id = targetDoc.selectSingleNode("field[@name='id']").getText();
-                Element srcDoc = nodeCache.get(id.trim());
-                // System.out.println();
-                // add all from doc2 besides id
-                Iterator<Element> fieldIterator = srcDoc.elementIterator("field");
-                while (fieldIterator.hasNext()) {
-                    Element f = fieldIterator.next();
-                    if (!f.attributeValue("name").equals("id")) {
-                        f.detach();
-                        targetDoc.add(f);
-                    }
-                }
-                // add imgurl if not here yet:
-                // <field name="imgurl">flickrphotos/04/6296825000_d16622c83b_m.jpg</field>
-                Element url = targetDoc.addElement("field");
-                url.addAttribute("name", "imgurl");
-                url.setText(id.substring(id.indexOf("test/")));
-                countDocs++;
-                if (countDocs%2000 == 0) System.out.printf("# %03d%% entries merged.\n", (int) (countDocs * 100d / numDocs));
-            }
-            if (outFile!=null) {
-                System.out.println((String.format("# Writing output to file %s", outFile.getPath())));
-                BufferedWriter writer = new BufferedWriter(new FileWriter(outFile), 1024 * 1024 * 10);
-                targetDocument.write(writer);
-                writer.close();
-            } else {
-                OutputStreamWriter writer = new OutputStreamWriter(System.out);
-                targetDocument. write(writer);
-                writer.close();
-            }
-        } catch (DocumentException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
+        // we need to cache the src documents nodes by their ids ...
+        System.out.println("# Caching nodes");
+        HashMap<String, Element> nodeCache = new HashMap<>(10000);
+        Iterator<Element> docIterator = srcDocument.getRootElement().elementIterator("doc");
+        while (docIterator.hasNext()) {
+            Element doc = docIterator.next();
+            String id = doc.selectSingleNode("field[@name='id']").getText();
+            nodeCache.put(id, (Element) doc.detach());
         }
+        System.out.println("# " + nodeCache.size() + " nodes cached from " + fileA.getPath());
+        System.out.println("# Merging data");
+        docIterator = targetRoot.elementIterator("doc");
+        while (docIterator.hasNext()) {
+            Element targetDoc = docIterator.next();
+            String id = targetDoc.selectSingleNode("field[@name='id']").getText();
+            Element srcDoc = nodeCache.get(id.trim());
+            // System.out.println();
+            // add all from doc2 besides id
+            Iterator<Element> fieldIterator = srcDoc.elementIterator("field");
+            while (fieldIterator.hasNext()) {
+                Element f = fieldIterator.next();
+                if (!f.attributeValue("name").equals("id")) {
+                    f.detach();
+                    targetDoc.add(f);
+                }
+            }
+            // add imgurl if not here yet:
+            // <field name="imgurl">flickrphotos/04/6296825000_d16622c83b_m.jpg</field>
+            Element url = targetDoc.addElement("field");
+            url.addAttribute("name", "imgurl");
+            url.setText(id.substring(id.indexOf("test/")));
+            countDocs++;
+            if (countDocs%2000 == 0) System.out.printf("# %03d%% entries merged.\n", (int) (countDocs * 100d / numDocs));
+        }
+        if (outFile!=null) {
+            System.out.println((String.format("# Writing output to file %s", outFile.getPath())));
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(outFile), 1024 * 1024 * 10)) {
+                targetDocument.write(writer);
+            }
+        } else {
+            try (OutputStreamWriter writer = new OutputStreamWriter(System.out)) {
+                targetDocument. write(writer);
+            }
+        }
+        return null;
     }
 }

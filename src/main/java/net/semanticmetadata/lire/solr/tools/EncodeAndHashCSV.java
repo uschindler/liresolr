@@ -28,7 +28,7 @@ public class EncodeAndHashCSV implements Runnable {
         this.outfile = outfile;
     }
 
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) throws ParseException, IOException, ReflectiveOperationException {
         HashingMetricSpacesManager.init();
         File infile = null, outfile = null;
 
@@ -75,10 +75,9 @@ public class EncodeAndHashCSV implements Runnable {
     public void run() {
         // read infile line by line
         String[] classes;
-        try {
+        try (BufferedReader br = new BufferedReader(new FileReader(infile))) {
             Document document = DocumentHelper.createDocument();
             Element root = document.addElement("add");
-            BufferedReader br = new BufferedReader(new FileReader(infile));
             // we assume that the first line is the name of the classes and the first col is the file name:
             String line = br.readLine();
             String[] tmp_array = line.split(",");
@@ -119,7 +118,7 @@ public class EncodeAndHashCSV implements Runnable {
             document.write(out);
             out.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException(e);
         }
     }
 

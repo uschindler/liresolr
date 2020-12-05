@@ -36,7 +36,6 @@ public class MirFlickrImageDataProcessor implements ImageDataProcessor {
             sb.append(tmp.toString().replaceAll("\\s", " "));  // replacing \n\r\t and all those with " "
             sb.append("</field>");
         } catch (IOException e) {
-            e.printStackTrace();
             return "";
         }
         return sb;

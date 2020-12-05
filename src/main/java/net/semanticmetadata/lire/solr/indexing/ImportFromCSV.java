@@ -5,9 +5,11 @@ import net.semanticmetadata.lire.solr.tools.EncodeAndHashCSV;
 import net.semanticmetadata.lire.solr.tools.FileListFromSolrXML;
 import net.semanticmetadata.lire.solr.tools.XmlMerge;
 import org.apache.commons.cli.*;
+import org.dom4j.DocumentException;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.Callable;
 
 /**
  * This class takes a CSV file with deep features for image files (one per line, path to image in the first col, feature
@@ -17,7 +19,7 @@ import java.io.IOException;
  * {@link net.semanticmetadata.lire.solr.tools.XmlMerge}. As the very last part of the process is done in memory, the CSV
  * file should not get too big (10 k images work just fine on a laptop computer).
  */
-public class ImportFromCSV implements Runnable {
+public class ImportFromCSV implements Callable<Void> {
     File csvFile, outFile;
 
     public ImportFromCSV(File csvFile, File outFile) {
@@ -25,7 +27,7 @@ public class ImportFromCSV implements Runnable {
         this.outFile = outFile;
     }
 
-    public static void main(String[] args) throws ParseException {
+    public static void main(String[] args) throws ParseException, IOException, ReflectiveOperationException, InterruptedException, DocumentException {
         HashingMetricSpacesManager.init();
         File infile = null, outfile = null;
         Options options = new Options();
@@ -60,7 +62,7 @@ public class ImportFromCSV implements Runnable {
             System.exit(1);
         }
         ImportFromCSV i = new ImportFromCSV(infile, outfile);
-        i.run();
+        i.call();
 
     }
 
@@ -71,37 +73,34 @@ public class ImportFromCSV implements Runnable {
 
 
     @Override
-    public void run() {
-        try {
-            // create temporary files.
-            File deepXML = File.createTempFile("encoded-and-hashed-", ".xml");
-            File fileList = File.createTempFile("file-list-", ".lst");
-            File lireXML = File.createTempFile("lire-", ".xml");
+    public Void call() throws IOException, ReflectiveOperationException, InterruptedException, DocumentException {
+        // create temporary files.
+        File deepXML = File.createTempFile("encoded-and-hashed-", ".xml");
+        File fileList = File.createTempFile("file-list-", ".lst");
+        File lireXML = File.createTempFile("lire-", ".xml");
 
-            // do the tricks.
-            System.out.println("## Converting CSV to XML by encoding the features and hashing them.");
-            EncodeAndHashCSV enc = new EncodeAndHashCSV(csvFile, deepXML);
-            enc.run();
-            System.out.println("## Creating a file list for ParallelSolrIndexer.");
-            FileListFromSolrXML fl = new FileListFromSolrXML(deepXML, fileList);
-            fl.run();
-            System.out.println("## RunningParallelSolrIndexer.");
-            ParallelSolrIndexer p = new ParallelSolrIndexer();
-            p.setFileList(fileList);
-            p.setOutFile(lireXML);
-            p.run();
-            System.out.println("## Merging the created data.");
-            XmlMerge xm = new XmlMerge(deepXML, lireXML, outFile);
-            xm.run();
+        // do the tricks.
+        System.out.println("## Converting CSV to XML by encoding the features and hashing them.");
+        EncodeAndHashCSV enc = new EncodeAndHashCSV(csvFile, deepXML);
+        enc.run();
+        System.out.println("## Creating a file list for ParallelSolrIndexer.");
+        FileListFromSolrXML fl = new FileListFromSolrXML(deepXML, fileList);
+        fl.run();
+        System.out.println("## RunningParallelSolrIndexer.");
+        ParallelSolrIndexer p = new ParallelSolrIndexer();
+        p.setFileList(fileList);
+        p.setOutFile(lireXML);
+        p.call();
+        System.out.println("## Merging the created data.");
+        XmlMerge xm = new XmlMerge(deepXML, lireXML, outFile);
+        xm.call();
 
-            // delete the temp file ...
-            System.out.println("## Cleaning up temporary files.");
-            lireXML.deleteOnExit();
-            deepXML.deleteOnExit();
-            fileList.deleteOnExit();
-            System.out.println("## Finished.");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // delete the temp file ...
+        System.out.println("## Cleaning up temporary files.");
+        lireXML.deleteOnExit();
+        deepXML.deleteOnExit();
+        fileList.deleteOnExit();
+        System.out.println("## Finished.");
+        return null;
     }
 }

@@ -33,12 +33,12 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
 
     File outfile;
     LinkedBlockingQueue<QueueItem> queue = new LinkedBlockingQueue<>(500);
-    BufferedWriter bw;
+    final BufferedWriter bw;
     List<Thread> threads;
     private int numThreads = 8;
 
     public IndexingFromTextFile(File infile, File outFile,
-                                boolean doHashingBitSampling, boolean doMetricSpaceIndexing, int splitAt) throws IOException {
+                                boolean doHashingBitSampling, boolean doMetricSpaceIndexing, int splitAt) throws IOException, ReflectiveOperationException {
         super(infile, true, doHashingBitSampling, doMetricSpaceIndexing);
         this.outfile = outFile;
         bw = new BufferedWriter(new FileWriter(outfile));
@@ -46,7 +46,7 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
         HashingMetricSpacesManager.init(); // load reference points from disk.
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, ReflectiveOperationException, InterruptedException {
         Properties p = CommandLineUtils.getProperties(args, helpMessage, new String[]{"-i", "-o"});
         File inFile = new File(p.getProperty("-i"));
         File outFile = new File(p.getProperty("-o"));
@@ -58,18 +58,11 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
             System.out.println(helpMessage);
             System.exit(1);
         }
-        try {
-            IndexingFromTextFile i = new IndexingFromTextFile(inFile, outFile,
-                    p.get("-hb") != null, p.get("-hm") != null, splitAt);
-            Thread t = new Thread(i);
-            t.start();
-            t.join();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
+        IndexingFromTextFile i = new IndexingFromTextFile(inFile, outFile,
+                p.get("-hb") != null, p.get("-hm") != null, splitAt);
+        Thread t = new Thread(i);
+        t.start();
+        t.join();
     }
 
     @Override
@@ -77,7 +70,7 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
         try {
             bw.write("<add>");
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new UncheckedIOException(e);
         }
         threads = new LinkedList<>();
         for (int i = 0; i < numThreads; i++) {
@@ -97,13 +90,13 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
                 iterator.next().join();
             }
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         try {
             bw.write("</add>");
             bw.close();
         } catch (IOException e) {
-            e.printStackTrace();
+          throw new UncheckedIOException(e);
         }
 
     }
@@ -120,12 +113,8 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
                 tmp.add(n);
             }
             queue.put(new QueueItem(s, tmp));
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        } catch (ReflectiveOperationException | InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -142,6 +131,7 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
     class Consumer implements Runnable {
         HashMap<String, String> document = new HashMap<>();
 
+        @SuppressWarnings("synthetic-access")
         @Override
         public void run() {
             try {
@@ -170,7 +160,7 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
                     data = queue.take();
                 }
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
         }
 
@@ -188,7 +178,7 @@ public class IndexingFromTextFile extends AbstractDocumentWriter {
                 try {
                     bw.write(sb.toString());
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    throw new UncheckedIOException(e);
                 }
             }
         }
