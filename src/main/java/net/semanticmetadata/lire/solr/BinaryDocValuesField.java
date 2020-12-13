@@ -40,27 +40,56 @@
 package net.semanticmetadata.lire.solr;
 
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.util.BytesRef;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.Base64;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.schema.FieldType;
+import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.uninverting.UninvertingReader;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 
 /**
  * Base64 -&gt; DocValues implementation used for the Solr Plugin. Using this field one can index byte[] values by
  * sending them to Solr base64 encoded. In case of the LIRE plugin, the fields get read linearly, so they need to be
  * extremely fast, which is the case with the DocValues.
- * @author Mathias Lux, mathias@juggle.at, 12.08.2013
+ * @author Mathias Lux, mathias@juggle.at, 12.08.2013; Uwe Schindler (additions for Multivalued and more strict schema handling)
  */
 public class BinaryDocValuesField extends FieldType {
+  
+    private static final ByteBuffer EMPTY_BUFFER = ByteBuffer.allocate(0);
 
-    private String toBase64String(ByteBuffer buf) {
+    @Override
+    protected void init(IndexSchema schema, Map<String,String> args) {
+      super.init(schema, args);
+      if ((trueProperties & (FieldType.STORED|FieldType.INDEXED)) != 0) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored");
+      }
+      if ((falseProperties & FieldType.DOC_VALUES) != 0) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
+      }
+      if ((falseProperties & FieldType.USE_DOCVALUES_AS_STORED) != 0) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs useDocValuesAsStored enabled");
+      }
+      // set correct defaults for this field type:
+      properties &= ~(FieldType.STORED | FieldType.INDEXED);
+      properties |= FieldType.DOC_VALUES | FieldType.USE_DOCVALUES_AS_STORED;
+    }
+    
+    @Override
+    protected void checkSupportsDocValues() {
+      // we support docValues
+    }
+
+    private static String toBase64String(ByteBuffer buf) {
         return Base64.byteArrayToBase64(buf.array(), buf.position(), buf.limit() - buf.position());
     }
 
@@ -71,9 +100,8 @@ public class BinaryDocValuesField extends FieldType {
 
     @Override
     public SortField getSortField(SchemaField field, boolean top) {
-        throw new RuntimeException("Cannot sort on a Binary field");
+        throw new UnsupportedOperationException("Cannot sort on a Binary field");
     }
-
 
     @Override
     public String toExternal(IndexableField f) {
@@ -82,46 +110,58 @@ public class BinaryDocValuesField extends FieldType {
 
     @Override
     public ByteBuffer toObject(IndexableField f) {
-        BytesRef bytes = f.binaryValue();
+        final BytesRef bytes = f.binaryValue();
         if (bytes != null) {
             return  ByteBuffer.wrap(bytes.bytes, bytes.offset, bytes.length);
         }
-        return ByteBuffer.allocate(0);
+        return EMPTY_BUFFER;
     }
 
     @Override
     public UninvertingReader.Type getUninversionType(SchemaField sf) {
-        throw new UnsupportedOperationException("Not Implemented!");
-        // return null;
+        throw new AssertionError("Should never be called, as docvalues are always available");
     }
 
     @Override
     public IndexableField createField(SchemaField field, Object val /*, float boost*/) {
-        if (val == null) return null;
-        if (!field.stored()) {
-            return null;
+        if (val == null) {
+          return null;
         }
-        byte[] buf = null;
-        int offset = 0, len = 0;
+        
+        final BytesRef ref;
         if (val instanceof byte[]) {
-            buf = (byte[]) val;
-            len = buf.length;
+            final byte[] b = (byte[]) val;
+            ref = new BytesRef(b, 0, b.length);
         } else if (val instanceof ByteBuffer && ((ByteBuffer)val).hasArray()) {
-            ByteBuffer byteBuf = (ByteBuffer) val;
-            buf = byteBuf.array();
-            offset = byteBuf.position();
-            len = byteBuf.limit() - byteBuf.position();
+            final ByteBuffer byteBuf = (ByteBuffer) val;
+            ref = new BytesRef(byteBuf.array(), byteBuf.position(), byteBuf.limit() - byteBuf.position());
         } else {
             String strVal = val.toString();
             //the string has to be a base64 encoded string
-            buf = Base64.base64ToByteArray(strVal);
-            offset = 0;
-            len = buf.length;
+            final byte[] b = Base64.base64ToByteArray(strVal);
+            ref = new BytesRef(b, 0, b.length);
         }
 
-        Field f = new org.apache.lucene.document.BinaryDocValuesField(field.getName(), new BytesRef(buf, offset, len));
-//        Field f = new org.apache.lucene.document.StoredField(field.getName(), buf, offset, len);
-        //f.setBoost(boost);
+        final Field f;
+        if (field.multiValued()) {
+          f = new SortedSetDocValuesField(field.getName(), ref);
+        } else {
+          f = new org.apache.lucene.document.BinaryDocValuesField(field.getName(), ref);
+        }
         return f;
+    }
+
+    @Override
+    public void checkSchemaField(SchemaField field) {
+      if (field.stored() || field.indexed()) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored");
+      }
+      if (!field.hasDocValues()) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
+      }
+      if (!field.useDocValuesAsStored()) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs useDocValuesAsStored enabled");
+      }
+      super.checkSchemaField(field);
     }
 }
