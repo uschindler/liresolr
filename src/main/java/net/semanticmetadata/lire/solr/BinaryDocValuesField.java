@@ -39,6 +39,10 @@
 
 package net.semanticmetadata.lire.solr;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Map;
+
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.index.IndexableField;
@@ -52,10 +56,6 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.uninverting.UninvertingReader;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.Map;
 
 /**
  * Base64 -&gt; DocValues implementation used for the Solr Plugin. Using this field one can index byte[] values by
@@ -71,17 +71,14 @@ public class BinaryDocValuesField extends FieldType {
     protected void init(IndexSchema schema, Map<String,String> args) {
       super.init(schema, args);
       if ((trueProperties & (FieldType.STORED|FieldType.INDEXED)) != 0) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored");
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored; to emulate stored fields use useDocValuesAsStored");
       }
       if ((falseProperties & FieldType.DOC_VALUES) != 0) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
       }
-      if ((falseProperties & FieldType.USE_DOCVALUES_AS_STORED) != 0) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs useDocValuesAsStored enabled");
-      }
       // set correct defaults for this field type:
       properties &= ~(FieldType.STORED | FieldType.INDEXED);
-      properties |= FieldType.DOC_VALUES | FieldType.USE_DOCVALUES_AS_STORED;
+      properties |= FieldType.DOC_VALUES;
     }
     
     @Override
@@ -115,6 +112,15 @@ public class BinaryDocValuesField extends FieldType {
             return  ByteBuffer.wrap(bytes.bytes, bytes.offset, bytes.length);
         }
         return EMPTY_BUFFER;
+    }
+
+
+    @Override
+    public Object toObject(SchemaField sf, BytesRef bytes) {
+      if (bytes != null) {
+          return  ByteBuffer.wrap(bytes.bytes, bytes.offset, bytes.length);
+      }
+      return EMPTY_BUFFER;
     }
 
     @Override
@@ -154,13 +160,10 @@ public class BinaryDocValuesField extends FieldType {
     @Override
     public void checkSchemaField(SchemaField field) {
       if (field.stored() || field.indexed()) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored");
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored; to emulate stored fields use useDocValuesAsStored");
       }
       if (!field.hasDocValues()) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
-      }
-      if (!field.useDocValuesAsStored()) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs useDocValuesAsStored enabled");
       }
       super.checkSchemaField(field);
     }

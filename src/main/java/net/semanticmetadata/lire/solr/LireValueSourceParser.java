@@ -39,6 +39,7 @@
 
 package net.semanticmetadata.lire.solr;
 
+import java.util.Locale;
 import java.util.Objects;
 
 import org.apache.commons.codec.binary.Base64;
@@ -47,6 +48,8 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.ValueSourceParser;
+
+import net.semanticmetadata.lire.solr.LireValueSource.AggregationFunction;
 
 /**
  * <p>A query function for sorting results based on the LIRE CBIR functions.
@@ -59,7 +62,8 @@ import org.apache.solr.search.ValueSourceParser;
  * To use the function getting a distance to a reference image use it like:<br>
  * <pre>http://localhost:9000/solr/lire/select?q=*:*&amp;fl=id,lirefunc(cl,"FQY5DhMYDg0ODg0PEBEPDg4ODg8QEgsgEBAQEBAgEBAQEBA%3D")</pre>
  * The first parameter gives the field (cl, ph, eh, or jc), the second gives the byte[] representation of the
- * histogram in Base64 encoding
+ * histogram in Base64 encoding. Third parameter is selecting the function to combine multiple matches per document:
+ * mix, avg, max.
  *
  * @author Mathias Lux, mathias@juggle.at, 17.09.2013, Uwe Schindler (Solr 7/8 fixes)
  */
@@ -70,17 +74,22 @@ public class LireValueSourceParser extends ValueSourceParser {
 
     @Override
     public ValueSource parse(FunctionQParser fp) throws SyntaxError {
-        String field = Objects.requireNonNull(fp.parseArg(), "missing argument: field"); // eg. cl_hi
+        String field = Objects.requireNonNull(fp.parseArg(), "missing argument: field");
         if (!field.endsWith(FeatureRegistry.featureFieldPostfix)) {
           field += FeatureRegistry.featureFieldPostfix;
         }
+        
         String featureString = Objects.requireNonNull(fp.parseArg(), "missing argument: histogram");
         byte[] hist= Base64.decodeBase64(featureString);
+        
+        String aggregation = Objects.requireNonNull(fp.parseArg(), "missing argument: aggregation");
+        final AggregationFunction agg = AggregationFunction.valueOf(aggregation.toUpperCase(Locale.ROOT)); 
+
         double maxDistance = Double.MAX_VALUE;
-        // if there is a third argument, it's the max value to return if there is none.
+        // if there is a fourth argument, it's the max value to return if there is none.
         if (fp.hasMoreArguments()) {
             maxDistance = fp.parseDouble();
         }
-        return new LireValueSource(field, hist, maxDistance);
+        return new LireValueSource(field, hist, agg, maxDistance);
     }
 }

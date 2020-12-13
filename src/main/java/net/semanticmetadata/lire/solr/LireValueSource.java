@@ -50,10 +50,12 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
@@ -63,26 +65,70 @@ import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
  * Implementation based partially on the outdated guide given on http://www.supermind.org/blog/756,
  * comments on the mailing list provided from Chris Hostetter, and the 4.4 Solr and Lucene source.
  *
- * @author Mathias Lux, 17.09.13 12:26, Uwe Schindler (Solr 7/8 fixes)
+ * @author Mathias Lux, 17.09.13 12:26, Uwe Schindler (Solr 7/8 fixes; multiValue support)
  */
 public final class LireValueSource extends ValueSource {
     final String field;
+    final AggregationFunction aggFunc;
     final double maxDistance;
     private final byte[] hist;
     final GlobalFeature feature;
     final Supplier<GlobalFeature> featureProvider;
+    
+    /**
+     * A function to combine the distances of multiple images into one value
+     * @author Uwe Schindler
+     */
+    public static enum AggregationFunction {
+      AVG {
+        @Override
+        public double combine(double[] values, int count) {
+          double v = 0;
+          for (int i = 0; i < count; i++) {
+            v += values[i];
+          }
+          return v / count;
+        }
+      },
+      
+      MIN {
+        @Override
+        public double combine(double[] values, int count) {
+          double v = values[0];
+          for (int i = 1; i < count; i++) {
+            v = Math.min(values[i], v);
+          }
+          return v;
+        }
+      },
+      
+      MAX {
+        @Override
+        public double combine(double[] values, int count) {
+          double v = values[0];
+          for (int i = 1; i < count; i++) {
+            v = Math.max(values[i], v);
+          }
+          return v;
+        }
+      };
+      
+      public abstract double combine(double[] values, int count);
+    }
 
     /**
      * @param featureField the field of the feature used for sorting.
      * @param hist the histogram in bytes.
      * @param maxDistance  the distance value returned if there is no distance calculation possible.
      */
-    public LireValueSource(String featureField, byte[] hist, double maxDistance) {
+    public LireValueSource(String featureField, byte[] hist, AggregationFunction aggFunc, double maxDistance) {
         Objects.requireNonNull(featureField, "featureField");
         Objects.requireNonNull(hist, "hist");
+        Objects.requireNonNull(aggFunc, "aggFunc");
         
         this.field = featureField;
         this.hist = hist;
+        this.aggFunc = aggFunc;
         this.maxDistance = maxDistance;
 
         // get the feature from the feature registry.
@@ -104,12 +150,15 @@ public final class LireValueSource extends ValueSource {
     @Override
     public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
         final FieldInfo fieldInfo = readerContext.reader().getFieldInfos().fieldInfo(field);
-        if (fieldInfo != null && fieldInfo.getDocValuesType() == DocValuesType.BINARY) {
+        final DocValuesType type = (fieldInfo != null) ? fieldInfo.getDocValuesType() : DocValuesType.NONE;
+        switch (type) {
+          case BINARY: { // single-valued
             final BinaryDocValues values = DocValues.getBinary(readerContext.reader(), field);
 
             return new DoubleDocValues(this) {
-              final GlobalFeature tmpFeature = featureProvider.get();
-              int lastDocID;
+              private final GlobalFeature tmpFeature = featureProvider.get();
+              private double currentValue = maxDistance;
+              private int lastDocID, lastCalculatedDocID = -1;
 
               private double calcCurrentValue() throws IOException {
                 final BytesRef bytesRef = values.binaryValue();
@@ -122,7 +171,6 @@ public final class LireValueSource extends ValueSource {
                 } else {
                     return maxDistance; // make sure max distance is returned for those without value
                 }
-
               }
               
               @Override
@@ -131,14 +179,18 @@ public final class LireValueSource extends ValueSource {
                   throw new IllegalArgumentException("docs were sent out-of-order: lastDocID=" + lastDocID + " vs docID=" + doc);
                 }
                 lastDocID = doc;
+                if (lastCalculatedDocID == doc) {
+                  return currentValue;
+                }
                 int curDocID = values.docID();
                 if (doc > curDocID) {
                   curDocID = values.advance(doc);
                 }
+                lastCalculatedDocID = doc;
                 if (doc == curDocID) {
-                  return calcCurrentValue();
+                  return currentValue = calcCurrentValue();
                 } else {
-                  return maxDistance;
+                  return currentValue = maxDistance;
                 }
               }
 
@@ -147,7 +199,71 @@ public final class LireValueSource extends ValueSource {
                 return true; // we return a value for every doc!
               }
             };
-        } else {
+          }
+          
+          case SORTED_SET: { // multi-valued
+            final SortedSetDocValues values = DocValues.getSortedSet(readerContext.reader(), field);
+
+            return new DoubleDocValues(this) {
+              private final GlobalFeature tmpFeature = featureProvider.get();
+              private double[] distances = new double[16];
+              private double currentValue = maxDistance;
+              private int lastDocID, lastCalculatedDocID = -1;
+
+              private double calcCurrentValue() throws IOException {
+                int idx = 0;
+                for (long ord = values.nextOrd(); ord != SortedSetDocValues.NO_MORE_ORDS; ord = values.nextOrd()) {
+                  final BytesRef bytesRef = values.lookupOrd(ord);
+                  if (bytesRef.length == 0) continue;
+                  tmpFeature.setByteArrayRepresentation(
+                      bytesRef.bytes,
+                      bytesRef.offset,
+                      bytesRef.length);
+                  if (idx >= distances.length) {
+                    distances = ArrayUtil.grow(distances);
+                  }
+                  distances[idx] = tmpFeature.getDistance(feature);
+                  idx++;
+                }
+                switch (idx) {
+                  case 0:
+                    return maxDistance;
+                  case 1: // optimization if there's only one value
+                    return distances[0];
+                  default:
+                    return aggFunc.combine(distances, idx);
+                }
+              }
+              
+              @Override
+              public double doubleVal(int doc) throws IOException {
+                if (doc < lastDocID) {
+                  throw new IllegalArgumentException("docs were sent out-of-order: lastDocID=" + lastDocID + " vs docID=" + doc);
+                }
+                lastDocID = doc;
+                if (lastCalculatedDocID == doc) {
+                  return currentValue;
+                }
+                int curDocID = values.docID();
+                if (doc > curDocID) {
+                  curDocID = values.advance(doc);
+                }
+                lastCalculatedDocID = doc;
+                if (doc == curDocID) {
+                  return currentValue = calcCurrentValue();
+                } else {
+                  return currentValue = maxDistance;
+                }
+              }
+
+              @Override
+              public boolean exists(int doc) throws IOException {
+                return true; // we return a value for every doc!
+              }
+            };
+          }
+          
+          default:
             return new DoubleConstValueSource(maxDistance).getValues(context, readerContext);
         }
     }
