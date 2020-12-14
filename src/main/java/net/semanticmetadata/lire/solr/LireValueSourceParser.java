@@ -42,8 +42,8 @@ package net.semanticmetadata.lire.solr;
 import java.util.Locale;
 import java.util.Objects;
 
-import org.apache.commons.codec.binary.Base64;
 import org.apache.lucene.queries.function.ValueSource;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.SyntaxError;
@@ -80,7 +80,7 @@ public class LireValueSourceParser extends ValueSourceParser {
         }
         
         String featureString = Objects.requireNonNull(fp.parseArg(), "missing argument: histogram");
-        byte[] hist= Base64.decodeBase64(featureString);
+        byte[] hist= Base64.base64ToByteArray(featureString);
         
         String aggregation = Objects.requireNonNull(fp.parseArg(), "missing argument: aggregation");
         final AggregationFunction agg = AggregationFunction.valueOf(aggregation.toUpperCase(Locale.ROOT)); 

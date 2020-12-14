@@ -57,6 +57,7 @@ import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.solr.common.util.Base64;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
 
@@ -74,6 +75,7 @@ public final class LireValueSource extends ValueSource {
     private final byte[] hist;
     final GlobalFeature feature;
     final Supplier<GlobalFeature> featureProvider;
+    private final String desc;
     
     /**
      * A function to combine the distances of multiple images into one value
@@ -141,6 +143,9 @@ public final class LireValueSource extends ValueSource {
         // debug ...
         // System.out.println("Setting " + feature.getClass().getName() + " to " + Base64.byteArrayToBase64(hist, 0, hist.length));
         feature.setByteArrayRepresentation(hist);
+        
+        // calculate description upfront, so caching is faster:
+        desc = "lirefunc(" + field + ",'" + Base64.byteArrayToBase64(hist) + "'," + aggFunc + "," + maxDistance + ")";
     }
     
     /**
@@ -270,7 +275,7 @@ public final class LireValueSource extends ValueSource {
 
     @Override
     public int hashCode() {
-        return Objects.hash(field, maxDistance, hist);
+        return desc.hashCode();
     }
 
     @Override
@@ -281,12 +286,13 @@ public final class LireValueSource extends ValueSource {
       final LireValueSource other = (LireValueSource) obj;
       if (!Objects.equals(field, other.field)) return false;
       if (!Arrays.equals(hist, other.hist)) return false;
+      if (!Objects.equals(aggFunc, other.aggFunc)) return false;
       if (Double.doubleToLongBits(maxDistance) != Double.doubleToLongBits(other.maxDistance)) return false;
       return true;
     }
     
     @Override
     public String description() {
-        return "distance to a given feature vector";
+        return desc;
     }
 }
