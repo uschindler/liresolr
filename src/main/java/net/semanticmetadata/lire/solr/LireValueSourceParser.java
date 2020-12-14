@@ -41,8 +41,8 @@ package net.semanticmetadata.lire.solr;
 
 import java.util.Objects;
 
-import org.apache.commons.codec.binary.Base64;
 import org.apache.lucene.queries.function.ValueSource;
+import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.SyntaxError;
@@ -75,7 +75,7 @@ public class LireValueSourceParser extends ValueSourceParser {
           field += FeatureRegistry.featureFieldPostfix;
         }
         String featureString = Objects.requireNonNull(fp.parseArg(), "missing argument: histogram");
-        byte[] hist= Base64.decodeBase64(featureString);
+        byte[] hist= Base64.base64ToByteArray(featureString);
         double maxDistance = Double.MAX_VALUE;
         // if there is a third argument, it's the max value to return if there is none.
         if (fp.hasMoreArguments()) {

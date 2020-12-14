@@ -55,6 +55,7 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import org.apache.lucene.queries.function.valuesource.DoubleConstValueSource;
 import org.apache.lucene.util.BytesRef;
+import org.apache.solr.common.util.Base64;
 
 import net.semanticmetadata.lire.imageanalysis.features.GlobalFeature;
 
@@ -71,6 +72,7 @@ public final class LireValueSource extends ValueSource {
     private final byte[] hist;
     final GlobalFeature feature;
     final Supplier<GlobalFeature> featureProvider;
+    private final String desc;
 
     /**
      * @param featureField the field of the feature used for sorting.
@@ -95,6 +97,9 @@ public final class LireValueSource extends ValueSource {
         // debug ...
         // System.out.println("Setting " + feature.getClass().getName() + " to " + Base64.byteArrayToBase64(hist, 0, hist.length));
         feature.setByteArrayRepresentation(hist);
+        
+        // calculate description upfront, so caching is faster:
+        desc = "lirefunc(" + field + ",'" + Base64.byteArrayToBase64(hist) + "'," + maxDistance + ")";
     }
     
     /**
@@ -154,7 +159,7 @@ public final class LireValueSource extends ValueSource {
 
     @Override
     public int hashCode() {
-        return Objects.hash(field, maxDistance, hist);
+        return desc.hashCode();
     }
 
     @Override
@@ -171,6 +176,6 @@ public final class LireValueSource extends ValueSource {
     
     @Override
     public String description() {
-        return "distance to a given feature vector";
+        return desc;
     }
 }
