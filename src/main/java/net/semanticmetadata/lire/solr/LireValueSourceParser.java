@@ -43,8 +43,11 @@ import java.util.Locale;
 import java.util.Objects;
 
 import org.apache.lucene.queries.function.ValueSource;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.Base64;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.schema.FieldType;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.ValueSourceParser;
@@ -77,6 +80,11 @@ public class LireValueSourceParser extends ValueSourceParser {
         String field = Objects.requireNonNull(fp.parseArg(), "missing argument: field");
         if (!field.endsWith(FeatureRegistry.featureFieldPostfix)) {
           field += FeatureRegistry.featureFieldPostfix;
+        }
+        final FieldType tp = fp.getReq().getSchema().getFieldType(field);
+        if (!(tp instanceof BinaryDocValuesField)) {
+          throw new SolrException(ErrorCode.SERVER_ERROR,
+              "Field '" + field + "' is not a BinaryDocValuesField, so it cannot be used with LIRE plugin.");
         }
         
         String featureString = Objects.requireNonNull(fp.parseArg(), "missing argument: histogram");
