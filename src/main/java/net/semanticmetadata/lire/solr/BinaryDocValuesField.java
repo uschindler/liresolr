@@ -65,8 +65,6 @@ import org.apache.solr.uninverting.UninvertingReader;
  */
 public class BinaryDocValuesField extends FieldType {
   
-    private static final ByteBuffer EMPTY_BUFFER = ByteBuffer.allocate(0);
-
     @Override
     protected void init(IndexSchema schema, Map<String,String> args) {
       super.init(schema, args);
@@ -86,8 +84,8 @@ public class BinaryDocValuesField extends FieldType {
       // we support docValues
     }
 
-    private static String toBase64String(ByteBuffer buf) {
-        return Base64.byteArrayToBase64(buf.array(), buf.position(), buf.limit() - buf.position());
+    private static String toBase64String(BytesRef bytes) {
+        return Base64.byteArrayToBase64(bytes.bytes, bytes.offset, bytes.length);
     }
 
     @Override
@@ -106,21 +104,15 @@ public class BinaryDocValuesField extends FieldType {
     }
 
     @Override
-    public ByteBuffer toObject(IndexableField f) {
-        final BytesRef bytes = f.binaryValue();
-        if (bytes != null) {
-            return  ByteBuffer.wrap(bytes.bytes, bytes.offset, bytes.length);
-        }
-        return EMPTY_BUFFER;
+    public BytesRef toObject(IndexableField f) {
+        final BytesRef b = f.binaryValue();
+        return b == null ? null : BytesRef.deepCopyOf(b);
     }
 
 
     @Override
-    public Object toObject(SchemaField sf, BytesRef bytes) {
-      if (bytes != null) {
-          return  ByteBuffer.wrap(bytes.bytes, bytes.offset, bytes.length);
-      }
-      return EMPTY_BUFFER;
+    public BytesRef toObject(SchemaField sf, BytesRef b) {
+        return b == null ? null : BytesRef.deepCopyOf(b);
     }
 
     @Override
