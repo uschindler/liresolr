@@ -68,14 +68,15 @@ public class BinaryDocValuesField extends FieldType {
     @Override
     protected void init(IndexSchema schema, Map<String,String> args) {
       super.init(schema, args);
-      if ((trueProperties & (FieldType.STORED|FieldType.INDEXED)) != 0) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored; to emulate stored fields use useDocValuesAsStored");
+      if ((trueProperties & (FieldType.STORED|FieldType.INDEXED|FieldType.UNINVERTIBLE)) != 0) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this +
+            " cannot be indexed/uninvertible or stored; to emulate stored fields use useDocValuesAsStored");
       }
       if ((falseProperties & FieldType.DOC_VALUES) != 0) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
       }
       // set correct defaults for this field type:
-      properties &= ~(FieldType.STORED | FieldType.INDEXED);
+      properties &= ~(FieldType.STORED | FieldType.INDEXED | FieldType.UNINVERTIBLE);
       properties |= FieldType.DOC_VALUES;
     }
     
@@ -117,7 +118,7 @@ public class BinaryDocValuesField extends FieldType {
 
     @Override
     public UninvertingReader.Type getUninversionType(SchemaField sf) {
-        throw new AssertionError("Should never be called, as docvalues are always available");
+        return null;
     }
 
     @Override
@@ -151,8 +152,8 @@ public class BinaryDocValuesField extends FieldType {
 
     @Override
     public void checkSchemaField(SchemaField field) {
-      if (field.stored() || field.indexed()) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed or stored; to emulate stored fields use useDocValuesAsStored");
+      if (field.stored() || field.indexed() || field.isUninvertible()) {
+        throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " cannot be indexed/uninvertible or stored; to emulate stored fields use useDocValuesAsStored");
       }
       if (!field.hasDocValues()) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Field type " + this + " needs docValues enabled");
